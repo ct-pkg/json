@@ -1,0 +1,5 @@
+# ct-pkg/json - a zero-allocation read-only JSON reader/writer in plain CT.
+# Built with the ct-ast compiler chain (the unit carries //@ct-requires: ct-ast).
+name = json
+version = 0.1.0
+licence = GPL-3.0-only

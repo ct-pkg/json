@@ -1,0 +1,2286 @@
+//@ct-requires: ct-ast
+/*
+ * json.ct -- a JSON reader/writer written in plain CT.
+ *
+ * The reader is a zero-allocation read-only view: `parse` validates the whole
+ * document once (and remembers where the first error is), but never builds a
+ * tree. A `JsonView` is just a byte range inside the caller's text; `member`,
+ * `at`, `count` and the `as_*` accessors re-scan that range on demand. Nothing
+ * is allocated, nothing is owned, and the text may be a read-only literal.
+ *
+ * The writer is the mirror image: `JsonOut` appends into a caller-provided
+ * buffer (cap = 0 measures the length), keeps its nesting stack in a fixed
+ * field, and never allocates either.
+ *
+ * Limits are stated where they live: nesting depth (64 by default), byte-based
+ * error columns, and double precision (see README.md).
+ *
+ * Reading is dispatched per kind through `trait JsonValue`. Each kind is a
+ * stateless ops object (`JsonObjectOps`, `JsonArrayOps`, ...) with one global
+ * instance; a `JsonValue` value is just a borrowed {ops, vtable} pair, so
+ * handing one out never points at a stack frame. `JsonDoc`'s accessors keep
+ * their signatures and delegate to the ops object for the view's kind.
+ *
+ * `loop` is used for the decimal exponent scaling in `JsonNumberOps.as_double`
+ * (Phase 22); everything else stays within what L0 also accepts, and the file
+ * still needs ct-ast because of that one loop.
+ */
+#include <stdio.h>
+#include <string.h>
+#include <float.h>
+
+/* value kinds reported by kind(); MISSING is not a JSON kind */
+#define JSON_MISSING 0
+#define JSON_OBJECT 1
+#define JSON_ARRAY 2
+#define JSON_STRING 3
+#define JSON_NUMBER 4
+#define JSON_TRUE 5
+#define JSON_FALSE 6
+#define JSON_NULL 7
+
+/* parse errors, sticky in the document and reported by error() */
+#define JSON_OK 0
+#define JSON_ERR_EOF 1
+#define JSON_ERR_CHAR 2
+#define JSON_ERR_LITERAL 3
+#define JSON_ERR_TRAILING 4
+#define JSON_ERR_STRING 5
+#define JSON_ERR_ESCAPE 6
+#define JSON_ERR_UNICODE 7
+#define JSON_ERR_SURROGATE 8
+#define JSON_ERR_NUMBER 9
+#define JSON_ERR_DEPTH 10
+
+/* accessor errors, reset on every accessor call and reported by read_error() */
+#define JSON_READ_NONE 0
+#define JSON_READ_KIND 1
+#define JSON_READ_MISSING 2
+#define JSON_READ_RANGE 3
+#define JSON_READ_INTEGER 4
+
+/* writer errors, sticky in the writer and reported by error() */
+#define JSON_EMIT_NONE 0
+#define JSON_EMIT_STATE 1
+#define JSON_EMIT_DEPTH 2
+#define JSON_EMIT_FINITE 3
+
+#define JSON_DEPTH_DEFAULT 64
+#define JSON_OUT_DEPTH 64
+
+struct JsonView;
+struct JsonOut;
+
+/* ---------------------------------------------------------------- writer */
+
+trait JsonWrite {
+    int begin(char *buf, int cap);
+    int object();
+    int array();
+    int end();
+    int key(const char *name);
+    int string(const char *text);
+    int integer(long long value);
+    int real(double value);
+    int boolean(int value);
+    int null();
+    int finish();
+    int length();
+    int error();
+}
+
+struct JsonOut {
+    char *buf;
+    int cap;
+    int len;
+    int err;
+    int depth;
+    int root_done;
+    unsigned char in_object[JSON_OUT_DEPTH];
+    unsigned char state[JSON_OUT_DEPTH];
+} use JsonWrite;
+
+/* ---------------------------------------------------------------- reader */
+
+trait Json {
+    int parse(const char *text, int len);
+    int error();
+    int error_offset();
+    int error_line();
+    int error_column();
+    struct JsonView root();
+    int kind(struct JsonView *v);
+    int count(struct JsonView *v);
+    struct JsonView member(struct JsonView *v, const char *key);
+    struct JsonView at(struct JsonView *v, int index);
+    int as_int(struct JsonView *v, long long *out);
+    int as_double(struct JsonView *v, double *out);
+    int as_bool(struct JsonView *v, int *out);
+    int as_string(struct JsonView *v, char *buf, int cap);
+    int offset_of(struct JsonView *v);
+    int len_of(struct JsonView *v);
+    int read_error();
+    int emit(struct JsonView *v, struct JsonOut *out);
+}
+
+struct JsonDoc {
+    const char *src;
+    int len;
+    int err;
+    int off;
+    int depth_limit;
+    int root_start;
+    int root_len;
+    int read_err;
+} use Json;
+
+/* a view is a byte range in doc->src: no kind, no pointers, no ownership */
+struct JsonView {
+    int start;
+    int len;
+};
+
+/* ------------------------------------------------------------ scan core */
+
+static int jv_is_ws(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+static int jv_skip_ws(const char *s, int n, int i) {
+    while (i < n && jv_is_ws(s[i])) {
+        i++;
+    }
+    return i;
+}
+
+static int jv_fail(int *code, int *off, int c, int o) {
+    *code = c;
+    *off = o;
+    return -1;
+}
+
+static int jv_hex(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+/* four hex digits starting at i; -1 with *bad at the first non-hex byte */
+static int jv_hex4(const char *s, int i, int *bad) {
+    int k;
+    int v;
+    int d;
+    v = 0;
+    for (k = 0; k < 4; k++) {
+        d = jv_hex(s[i + k]);
+        if (d < 0) {
+            *bad = i + k;
+            return -1;
+        }
+        v = v * 16 + d;
+    }
+    return v;
+}
+
+/* s[i] is '"'; returns the offset just past the closing quote */
+static int jv_scan_string(const char *s, int n, int i, int *code, int *off) {
+    i++;
+    while (1) {
+        unsigned char c;
+        int bad;
+        int cp;
+        if (i >= n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        c = (unsigned char)s[i];
+        if (c == '"') {
+            return i + 1;
+        }
+        if (c < 0x20) {
+            return jv_fail(code, off, JSON_ERR_STRING, i);
+        }
+        if (c != '\\') {
+            i++;
+            continue;
+        }
+        if (i + 1 >= n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        c = (unsigned char)s[i + 1];
+        if (c == '"' || c == '\\' || c == '/' || c == 'b' || c == 'f'
+                || c == 'n' || c == 'r' || c == 't') {
+            i += 2;
+            continue;
+        }
+        if (c != 'u') {
+            return jv_fail(code, off, JSON_ERR_ESCAPE, i + 1);
+        }
+        if (i + 6 > n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        cp = jv_hex4(s, i + 2, &bad);
+        if (cp < 0) {
+            return jv_fail(code, off, JSON_ERR_UNICODE, bad);
+        }
+        if (cp >= 0xD800 && cp <= 0xDBFF) {
+            int lo;
+            if (i + 6 >= n) {
+                return jv_fail(code, off, JSON_ERR_EOF, n);
+            }
+            if (s[i + 6] != '\\') {
+                return jv_fail(code, off, JSON_ERR_SURROGATE, i + 6);
+            }
+            if (i + 7 >= n) {
+                return jv_fail(code, off, JSON_ERR_EOF, n);
+            }
+            if (s[i + 7] != 'u') {
+                return jv_fail(code, off, JSON_ERR_SURROGATE, i + 7);
+            }
+            if (i + 12 > n) {
+                return jv_fail(code, off, JSON_ERR_EOF, n);
+            }
+            lo = jv_hex4(s, i + 8, &bad);
+            if (lo < 0) {
+                return jv_fail(code, off, JSON_ERR_UNICODE, bad);
+            }
+            if (lo < 0xDC00 || lo > 0xDFFF) {
+                return jv_fail(code, off, JSON_ERR_SURROGATE, i + 8);
+            }
+            i += 12;
+            continue;
+        }
+        if (cp >= 0xDC00 && cp <= 0xDFFF) {
+            return jv_fail(code, off, JSON_ERR_SURROGATE, i + 2);
+        }
+        i += 6;
+    }
+}
+
+/* strict RFC 8259 number: -? (0 | [1-9][0-9]*) (. [0-9]+)? ([eE][+-]?[0-9]+)? */
+static int jv_scan_number(const char *s, int n, int i, int *code, int *off) {
+    if (i < n && s[i] == '-') {
+        i++;
+    }
+    if (i >= n) {
+        return jv_fail(code, off, JSON_ERR_EOF, n);
+    }
+    if (s[i] == '0') {
+        i++;
+        if (i < n && s[i] >= '0' && s[i] <= '9') {
+            return jv_fail(code, off, JSON_ERR_NUMBER, i);
+        }
+    } else if (s[i] >= '1' && s[i] <= '9') {
+        while (i < n && s[i] >= '0' && s[i] <= '9') {
+            i++;
+        }
+    } else {
+        return jv_fail(code, off, JSON_ERR_NUMBER, i);
+    }
+    if (i < n && s[i] == '.') {
+        i++;
+        if (i >= n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        if (s[i] < '0' || s[i] > '9') {
+            return jv_fail(code, off, JSON_ERR_NUMBER, i);
+        }
+        while (i < n && s[i] >= '0' && s[i] <= '9') {
+            i++;
+        }
+    }
+    if (i < n && (s[i] == 'e' || s[i] == 'E')) {
+        i++;
+        if (i < n && (s[i] == '+' || s[i] == '-')) {
+            i++;
+        }
+        if (i >= n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        if (s[i] < '0' || s[i] > '9') {
+            return jv_fail(code, off, JSON_ERR_NUMBER, i);
+        }
+        while (i < n && s[i] >= '0' && s[i] <= '9') {
+            i++;
+        }
+    }
+    return i;
+}
+
+/* returns the offset just past one value, or -1 with the error recorded */
+static int jv_scan_value(const char *s, int n, int i, int depth, int dmax,
+        int *code, int *off) {
+    i = jv_skip_ws(s, n, i);
+    if (i >= n) {
+        return jv_fail(code, off, JSON_ERR_EOF, n);
+    }
+    if (s[i] == '{') {
+        if (depth > dmax) {
+            return jv_fail(code, off, JSON_ERR_DEPTH, i);
+        }
+        i = jv_skip_ws(s, n, i + 1);
+        if (i < n && s[i] == '}') {
+            return i + 1;
+        }
+        while (1) {
+            int key_end;
+            i = jv_skip_ws(s, n, i);
+            if (i >= n) {
+                return jv_fail(code, off, JSON_ERR_EOF, n);
+            }
+            if (s[i] != '"') {
+                return jv_fail(code, off, JSON_ERR_CHAR, i);
+            }
+            key_end = jv_scan_string(s, n, i, code, off);
+            if (key_end < 0) {
+                return -1;
+            }
+            i = jv_skip_ws(s, n, key_end);
+            if (i >= n) {
+                return jv_fail(code, off, JSON_ERR_EOF, n);
+            }
+            if (s[i] != ':') {
+                return jv_fail(code, off, JSON_ERR_CHAR, i);
+            }
+            i = jv_scan_value(s, n, i + 1, depth + 1, dmax, code, off);
+            if (i < 0) {
+                return -1;
+            }
+            i = jv_skip_ws(s, n, i);
+            if (i >= n) {
+                return jv_fail(code, off, JSON_ERR_EOF, n);
+            }
+            if (s[i] == ',') {
+                i++;
+                continue;
+            }
+            if (s[i] == '}') {
+                return i + 1;
+            }
+            return jv_fail(code, off, JSON_ERR_CHAR, i);
+        }
+    }
+    if (s[i] == '[') {
+        if (depth > dmax) {
+            return jv_fail(code, off, JSON_ERR_DEPTH, i);
+        }
+        i = jv_skip_ws(s, n, i + 1);
+        if (i < n && s[i] == ']') {
+            return i + 1;
+        }
+        while (1) {
+            i = jv_scan_value(s, n, i, depth + 1, dmax, code, off);
+            if (i < 0) {
+                return -1;
+            }
+            i = jv_skip_ws(s, n, i);
+            if (i >= n) {
+                return jv_fail(code, off, JSON_ERR_EOF, n);
+            }
+            if (s[i] == ',') {
+                i++;
+                continue;
+            }
+            if (s[i] == ']') {
+                return i + 1;
+            }
+            return jv_fail(code, off, JSON_ERR_CHAR, i);
+        }
+    }
+    if (s[i] == '"') {
+        return jv_scan_string(s, n, i, code, off);
+    }
+    if (s[i] == 't') {
+        if (i + 4 > n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        if (s[i + 1] == 'r' && s[i + 2] == 'u' && s[i + 3] == 'e') {
+            return i + 4;
+        }
+        return jv_fail(code, off, JSON_ERR_LITERAL, i);
+    }
+    if (s[i] == 'f') {
+        if (i + 5 > n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        if (s[i + 1] == 'a' && s[i + 2] == 'l' && s[i + 3] == 's'
+                && s[i + 4] == 'e') {
+            return i + 5;
+        }
+        return jv_fail(code, off, JSON_ERR_LITERAL, i);
+    }
+    if (s[i] == 'n') {
+        if (i + 4 > n) {
+            return jv_fail(code, off, JSON_ERR_EOF, n);
+        }
+        if (s[i + 1] == 'u' && s[i + 2] == 'l' && s[i + 3] == 'l') {
+            return i + 4;
+        }
+        return jv_fail(code, off, JSON_ERR_LITERAL, i);
+    }
+    if (s[i] == '-' || (s[i] >= '0' && s[i] <= '9')) {
+        return jv_scan_number(s, n, i, code, off);
+    }
+    return jv_fail(code, off, JSON_ERR_CHAR, i);
+}
+
+static int jv_view_ok(const struct JsonDoc *doc, const struct JsonView *v) {
+    if (v == 0 || v->start < 0 || v->len <= 0) {
+        return 0;
+    }
+    if (v->start > doc->len) {
+        return 0;
+    }
+    return v->len <= doc->len - v->start;
+}
+
+static int jv_dmax(const struct JsonDoc *doc) {
+    return doc->depth_limit > 0 ? doc->depth_limit : JSON_DEPTH_DEFAULT;
+}
+
+/* decode one escape sequence at *ip; writes 1..4 UTF-8 bytes, advances *ip */
+static int jv_decode(const char *s, int *ip, unsigned char *out) {
+    int i;
+    int bad;
+    unsigned char c;
+    i = *ip;
+    c = (unsigned char)s[i];
+    if (c != '\\') {
+        out[0] = c;
+        *ip = i + 1;
+        return 1;
+    }
+    c = (unsigned char)s[i + 1];
+    *ip = i + 2;
+    switch (c) {
+    case '"':
+        out[0] = '"';
+        return 1;
+    case '\\':
+        out[0] = '\\';
+        return 1;
+    case '/':
+        out[0] = '/';
+        return 1;
+    case 'b':
+        out[0] = '\b';
+        return 1;
+    case 'f':
+        out[0] = '\f';
+        return 1;
+    case 'n':
+        out[0] = '\n';
+        return 1;
+    case 'r':
+        out[0] = '\r';
+        return 1;
+    case 't':
+        out[0] = '\t';
+        return 1;
+    case 'u': {
+        int cp;
+        cp = jv_hex4(s, i + 2, &bad);
+        if (cp < 0) {
+            return -1;
+        }
+        if (cp >= 0xD800 && cp <= 0xDBFF) {
+            int lo;
+            lo = jv_hex4(s, i + 8, &bad);
+            if (lo < 0) {
+                return -1;
+            }
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+            *ip = i + 12;
+        } else {
+            *ip = i + 6;
+        }
+        if (cp < 0x80) {
+            out[0] = (unsigned char)cp;
+            return 1;
+        }
+        if (cp < 0x800) {
+            out[0] = (unsigned char)(0xC0 | (cp >> 6));
+            out[1] = (unsigned char)(0x80 | (cp & 0x3F));
+            return 2;
+        }
+        if (cp < 0x10000) {
+            out[0] = (unsigned char)(0xE0 | (cp >> 12));
+            out[1] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+            out[2] = (unsigned char)(0x80 | (cp & 0x3F));
+            return 3;
+        }
+        out[0] = (unsigned char)(0xF0 | (cp >> 18));
+        out[1] = (unsigned char)(0x80 | ((cp >> 12) & 0x3F));
+        out[2] = (unsigned char)(0x80 | ((cp >> 6) & 0x3F));
+        out[3] = (unsigned char)(0x80 | (cp & 0x3F));
+        return 4;
+    }
+    default:
+        return -1;
+    }
+}
+
+/* compare a raw object key range with a decoded C string (last-wins lookup) */
+static int jv_key_eq(const char *s, int start, int stop, const char *key) {
+    unsigned char out[4];
+    int i;
+    int k;
+    int j;
+    int n;
+    i = start;
+    k = 0;
+    while (i < stop) {
+        n = jv_decode(s, &i, out);
+        if (n < 0) {
+            return 0;
+        }
+        for (j = 0; j < n; j++) {
+            if (key[k] == '\0' || (unsigned char)key[k] != out[j]) {
+                return 0;
+            }
+            k++;
+        }
+    }
+    return key[k] == '\0';
+}
+
+/* ---------------------------------------------------------- iteration */
+
+struct JsonIter {
+    int i;
+    int end;
+    int obj;
+    int done;
+    int dmax;
+};
+
+static int jv_iter_begin(const struct JsonDoc *doc, const struct JsonView *v,
+        struct JsonIter *it) {
+    char c;
+    if (v->start < 0 || v->len <= 0) {
+        return 0;
+    }
+    c = doc->src[v->start];
+    if (c == '{') {
+        it->obj = 1;
+    } else if (c == '[') {
+        it->obj = 0;
+    } else {
+        return 0;
+    }
+    it->i = v->start + 1;
+    it->end = v->start + v->len;
+    it->done = 0;
+    it->dmax = jv_dmax(doc);
+    return 1;
+}
+
+/* 1 = a member/element was returned, 0 = end, -1 = malformed (never after parse) */
+static int jv_iter_next(const struct JsonDoc *doc, struct JsonIter *it,
+        struct JsonView *val, int *key_start, int *key_len) {
+    const char *s;
+    int i;
+    int code;
+    int off;
+    int vstart;
+    int key_end;
+    s = doc->src;
+    if (it->done) {
+        return 0;
+    }
+    i = jv_skip_ws(s, it->end, it->i);
+    if (i >= it->end) {
+        it->done = 1;
+        return 0;
+    }
+    if (s[i] == '}' || s[i] == ']') {
+        it->done = 1;
+        return 0;
+    }
+    *key_start = -1;
+    *key_len = 0;
+    if (it->obj) {
+        if (s[i] != '"') {
+            return -1;
+        }
+        *key_start = i + 1;
+        key_end = jv_scan_string(s, it->end, i, &code, &off);
+        if (key_end < 0) {
+            return -1;
+        }
+        *key_len = key_end - i - 2;
+        i = jv_skip_ws(s, it->end, key_end);
+        if (i >= it->end || s[i] != ':') {
+            return -1;
+        }
+        i++;
+    }
+    vstart = jv_skip_ws(s, it->end, i);
+    code = JSON_OK;
+    off = 0;
+    i = jv_scan_value(s, it->end, vstart, 1, it->dmax, &code, &off);
+    if (i < 0) {
+        return -1;
+    }
+    val->start = vstart;
+    val->len = i - vstart;
+    i = jv_skip_ws(s, it->end, i);
+    if (i < it->end && s[i] == ',') {
+        it->i = i + 1;
+    } else {
+        it->i = i;
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------ writer core */
+
+static void jw_byte(struct JsonOut *o, char c) {
+    if (o->len < o->cap) {
+        o->buf[o->len] = c;
+    }
+    o->len = o->len + 1;
+}
+
+static void jw_bytes(struct JsonOut *o, const char *p, int n) {
+    int i;
+    for (i = 0; i < n; i++) {
+        jw_byte(o, p[i]);
+    }
+}
+
+static int jw_before(struct JsonOut *o) {
+    int top;
+    if (o->err != JSON_EMIT_NONE) {
+        return 0;
+    }
+    if (o->depth == 0) {
+        if (o->root_done) {
+            o->err = JSON_EMIT_STATE;
+            return 0;
+        }
+        return 1;
+    }
+    top = o->depth - 1;
+    if (o->in_object[top]) {
+        if (o->state[top] != 2) {
+            o->err = JSON_EMIT_STATE;
+            return 0;
+        }
+    } else if (o->state[top] == 1) {
+        jw_byte(o, ',');
+    }
+    return 1;
+}
+
+static void jw_after(struct JsonOut *o) {
+    if (o->depth == 0) {
+        o->root_done = 1;
+    } else {
+        o->state[o->depth - 1] = 1;
+    }
+}
+
+static int jw_open(struct JsonOut *o, int is_object) {
+    if (!jw_before(o)) {
+        return 0;
+    }
+    if (o->depth >= JSON_OUT_DEPTH) {
+        o->err = JSON_EMIT_DEPTH;
+        return 0;
+    }
+    jw_byte(o, is_object ? '{' : '[');
+    jw_after(o);
+    o->in_object[o->depth] = (unsigned char)(is_object ? 1 : 0);
+    o->state[o->depth] = 0;
+    o->depth = o->depth + 1;
+    return 1;
+}
+
+static void jw_escaped(struct JsonOut *o, const char *text) {
+    int i;
+    unsigned char c;
+    static const char *hex = "0123456789abcdef";
+    i = 0;
+    while (text[i] != '\0') {
+        c = (unsigned char)text[i];
+        if (c == '"' || c == '\\') {
+            jw_byte(o, '\\');
+            jw_byte(o, (char)c);
+        } else if (c == '\b') {
+            jw_bytes(o, "\\b", 2);
+        } else if (c == '\f') {
+            jw_bytes(o, "\\f", 2);
+        } else if (c == '\n') {
+            jw_bytes(o, "\\n", 2);
+        } else if (c == '\r') {
+            jw_bytes(o, "\\r", 2);
+        } else if (c == '\t') {
+            jw_bytes(o, "\\t", 2);
+        } else if (c < 0x20) {
+            jw_bytes(o, "\\u00", 4);
+            jw_byte(o, hex[(c >> 4) & 0xF]);
+            jw_byte(o, hex[c & 0xF]);
+        } else {
+            jw_byte(o, (char)c);
+        }
+        i++;
+    }
+}
+
+/* ------------------------------------------------------------- writer impl */
+
+impl JsonWrite for JsonOut {
+    int begin(char *buf, int cap) {
+        self->buf = buf;
+        self->cap = cap > 0 ? cap : 0;
+        self->len = 0;
+        self->err = JSON_EMIT_NONE;
+        self->depth = 0;
+        self->root_done = 0;
+        return 1;
+    }
+    int object() {
+        return jw_open(self, 1);
+    }
+    int array() {
+        return jw_open(self, 0);
+    }
+    int end() {
+        int top;
+        if (self->err != JSON_EMIT_NONE) {
+            return 0;
+        }
+        if (self->depth == 0) {
+            self->err = JSON_EMIT_STATE;
+            return 0;
+        }
+        top = self->depth - 1;
+        if (self->in_object[top] && self->state[top] == 2) {
+            self->err = JSON_EMIT_STATE;
+            return 0;
+        }
+        jw_byte(self, self->in_object[top] ? '}' : ']');
+        self->depth = self->depth - 1;
+        return 1;
+    }
+    int key(const char *name) {
+        int top;
+        if (self->err != JSON_EMIT_NONE) {
+            return 0;
+        }
+        if (self->depth == 0) {
+            self->err = JSON_EMIT_STATE;
+            return 0;
+        }
+        top = self->depth - 1;
+        if (!self->in_object[top] || self->state[top] == 2) {
+            self->err = JSON_EMIT_STATE;
+            return 0;
+        }
+        if (self->state[top] == 1) {
+            jw_byte(self, ',');
+        }
+        jw_byte(self, '"');
+        jw_escaped(self, name);
+        jw_bytes(self, "\":", 2);
+        self->state[top] = 2;
+        return 1;
+    }
+    int string(const char *text) {
+        if (!jw_before(self)) {
+            return 0;
+        }
+        jw_byte(self, '"');
+        jw_escaped(self, text);
+        jw_byte(self, '"');
+        jw_after(self);
+        return 1;
+    }
+    int integer(long long value) {
+        char tmp[32];
+        int n;
+        if (!jw_before(self)) {
+            return 0;
+        }
+        n = snprintf(tmp, sizeof tmp, "%lld", value);
+        jw_bytes(self, tmp, n);
+        jw_after(self);
+        return 1;
+    }
+    int real(double value) {
+        char tmp[40];
+        int n;
+        if (value != value || value > DBL_MAX || value < -DBL_MAX) {
+            self->err = JSON_EMIT_FINITE;
+            return 0;
+        }
+        if (!jw_before(self)) {
+            return 0;
+        }
+        n = snprintf(tmp, sizeof tmp, "%.17g", value);
+        jw_bytes(self, tmp, n);
+        jw_after(self);
+        return 1;
+    }
+    int boolean(int value) {
+        if (!jw_before(self)) {
+            return 0;
+        }
+        if (value) {
+            jw_bytes(self, "true", 4);
+        } else {
+            jw_bytes(self, "false", 5);
+        }
+        jw_after(self);
+        return 1;
+    }
+    int null() {
+        if (!jw_before(self)) {
+            return 0;
+        }
+        jw_bytes(self, "null", 4);
+        jw_after(self);
+        return 1;
+    }
+    int finish() {
+        if (self->err != JSON_EMIT_NONE) {
+            return -1;
+        }
+        if (self->depth != 0 || !self->root_done) {
+            self->err = JSON_EMIT_STATE;
+            return -1;
+        }
+        if (self->cap > 0) {
+            int at;
+            at = self->len < self->cap ? self->len : self->cap - 1;
+            self->buf[at] = '\0';
+        }
+        return self->len;
+    }
+    int length() {
+        return self->len;
+    }
+    int error() {
+        return self->err;
+    }
+}
+
+/* ------------------------------------------------------- per-kind ops */
+
+/*
+ * The read side's polymorphic surface. Every instance is an empty struct: a
+ * view carries all the state it needs (the document plus a byte range), so a
+ * borrowed `JsonValue` value is stable for as long as the caller's text and
+ * never points into a stack frame. Unknown/MISSING has no ops object; the
+ * caller keeps the existing JSON_READ_MISSING behaviour.
+ */
+trait JsonValue {
+    int kind();
+    int count(struct JsonDoc *doc, struct JsonView v);
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index);
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key);
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out);
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out);
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out);
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap);
+    int offset_of(struct JsonDoc *doc, struct JsonView v);
+    int len_of(struct JsonDoc *doc, struct JsonView v);
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out);
+}
+
+struct JsonObjectOps {
+} use JsonValue;
+
+struct JsonArrayOps {
+} use JsonValue;
+
+struct JsonStringOps {
+} use JsonValue;
+
+struct JsonNumberOps {
+} use JsonValue;
+
+struct JsonTrueOps {
+} use JsonValue;
+
+struct JsonFalseOps {
+} use JsonValue;
+
+struct JsonNullOps {
+} use JsonValue;
+
+/* the MISSING view: start -1 is what every "not found" return uses */
+static struct JsonView jv_missing_view(void) {
+    struct JsonView v;
+    v.start = -1;
+    v.len = 0;
+    return v;
+}
+
+/* emit is kind-blind: the whole range is already validated JSON text */
+static int jv_emit_raw(struct JsonDoc *doc, struct JsonView v,
+        struct JsonOut *out) {
+    if (!jw_before(out)) {
+        return 0;
+    }
+    jw_bytes(out, doc->src + v.start, v.len);
+    jw_after(out);
+    return 1;
+}
+
+/* classify the first byte of a valid range; lexical, not kind behaviour */
+static int jv_kind_of(const char *s, int start) {
+    char c;
+    c = s[start];
+    if (c == '{') {
+        return JSON_OBJECT;
+    }
+    if (c == '[') {
+        return JSON_ARRAY;
+    }
+    if (c == '"') {
+        return JSON_STRING;
+    }
+    if (c == 't') {
+        return JSON_TRUE;
+    }
+    if (c == 'f') {
+        return JSON_FALSE;
+    }
+    if (c == 'n') {
+        return JSON_NULL;
+    }
+    return JSON_NUMBER;
+}
+
+impl JsonValue for JsonObjectOps {
+    int kind() {
+        return JSON_OBJECT;
+    }
+    int count(struct JsonDoc *doc, struct JsonView v) {
+        struct JsonIter it;
+        struct JsonView val;
+        int ks;
+        int kl;
+        int k;
+        int rc;
+        if (!jv_iter_begin(doc, &v, &it)) {
+            doc->read_err = JSON_READ_KIND;
+            return -1;
+        }
+        k = 0;
+        while (1) {
+            rc = jv_iter_next(doc, &it, &val, &ks, &kl);
+            if (rc < 0) {
+                doc->read_err = JSON_READ_MISSING;
+                return -1;
+            }
+            if (rc == 0) {
+                break;
+            }
+            k++;
+        }
+        return k;
+    }
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key) {
+        struct JsonIter it;
+        struct JsonView val;
+        struct JsonView found;
+        int ks;
+        int kl;
+        int rc;
+        found = jv_missing_view();
+        if (!jv_iter_begin(doc, &v, &it) || !it.obj) {
+            doc->read_err = JSON_READ_KIND;
+            return found;
+        }
+        while (1) {
+            rc = jv_iter_next(doc, &it, &val, &ks, &kl);
+            if (rc < 0) {
+                doc->read_err = JSON_READ_MISSING;
+                return found;
+            }
+            if (rc == 0) {
+                break;
+            }
+            if (jv_key_eq(doc->src, ks, ks + kl, key)) {
+                found = val;
+            }
+        }
+        if (found.start < 0) {
+            doc->read_err = JSON_READ_MISSING;
+        }
+        return found;
+    }
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    int offset_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.start;
+    }
+    int len_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.len;
+    }
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out) {
+        return jv_emit_raw(doc, v, out);
+    }
+}
+
+impl JsonValue for JsonArrayOps {
+    int kind() {
+        return JSON_ARRAY;
+    }
+    int count(struct JsonDoc *doc, struct JsonView v) {
+        struct JsonIter it;
+        struct JsonView val;
+        int ks;
+        int kl;
+        int k;
+        int rc;
+        if (!jv_iter_begin(doc, &v, &it)) {
+            doc->read_err = JSON_READ_KIND;
+            return -1;
+        }
+        k = 0;
+        while (1) {
+            rc = jv_iter_next(doc, &it, &val, &ks, &kl);
+            if (rc < 0) {
+                doc->read_err = JSON_READ_MISSING;
+                return -1;
+            }
+            if (rc == 0) {
+                break;
+            }
+            k++;
+        }
+        return k;
+    }
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index) {
+        struct JsonIter it;
+        struct JsonView val;
+        struct JsonView found;
+        int ks;
+        int kl;
+        int k;
+        int rc;
+        found = jv_missing_view();
+        if (!jv_iter_begin(doc, &v, &it) || it.obj) {
+            doc->read_err = JSON_READ_KIND;
+            return found;
+        }
+        k = 0;
+        while (1) {
+            rc = jv_iter_next(doc, &it, &val, &ks, &kl);
+            if (rc < 0) {
+                doc->read_err = JSON_READ_MISSING;
+                return found;
+            }
+            if (rc == 0) {
+                break;
+            }
+            if (k == index) {
+                return val;
+            }
+            k++;
+        }
+        doc->read_err = JSON_READ_MISSING;
+        return found;
+    }
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    int offset_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.start;
+    }
+    int len_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.len;
+    }
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out) {
+        return jv_emit_raw(doc, v, out);
+    }
+}
+
+impl JsonValue for JsonStringOps {
+    int kind() {
+        return JSON_STRING;
+    }
+    int count(struct JsonDoc *doc, struct JsonView v) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap) {
+        unsigned char out[4];
+        int i;
+        int end;
+        int n;
+        int j;
+        int m;
+        i = v.start + 1;
+        end = v.start + v.len - 1;
+        n = 0;
+        while (i < end) {
+            m = jv_decode(doc->src, &i, out);
+            if (m < 0) {
+                doc->read_err = JSON_READ_MISSING;
+                return -1;
+            }
+            for (j = 0; j < m; j++) {
+                if (n < cap - 1 && buf != 0) {
+                    buf[n] = (char)out[j];
+                }
+                n++;
+            }
+        }
+        if (cap > 0 && buf != 0) {
+            int at;
+            at = n < cap ? n : cap - 1;
+            buf[at] = '\0';
+        }
+        return n;
+    }
+    int offset_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.start;
+    }
+    int len_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.len;
+    }
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out) {
+        return jv_emit_raw(doc, v, out);
+    }
+}
+
+impl JsonValue for JsonNumberOps {
+    int kind() {
+        return JSON_NUMBER;
+    }
+    int count(struct JsonDoc *doc, struct JsonView v) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out) {
+        unsigned long long mag;
+        unsigned long long limit;
+        unsigned long long d;
+        int i;
+        int end;
+        int neg;
+        if (doc->src[v.start] < '-' || doc->src[v.start] > '9') {
+            doc->read_err = JSON_READ_KIND;
+            return 0;
+        }
+        i = v.start;
+        end = v.start + v.len;
+        neg = 0;
+        if (doc->src[i] == '-') {
+            neg = 1;
+            i++;
+        }
+        limit = neg ? 9223372036854775808ULL : 9223372036854775807ULL;
+        mag = 0;
+        while (i < end) {
+            char c;
+            c = doc->src[i];
+            if (c == '.' || c == 'e' || c == 'E') {
+                doc->read_err = JSON_READ_INTEGER;
+                return 0;
+            }
+            d = (unsigned long long)(c - '0');
+            if (d > 9) {
+                doc->read_err = JSON_READ_INTEGER;
+                return 0;
+            }
+            if (mag > (limit - d) / 10) {
+                doc->read_err = JSON_READ_RANGE;
+                return 0;
+            }
+            mag = mag * 10 + d;
+            i++;
+        }
+        if (neg) {
+            if (mag == 9223372036854775808ULL) {
+                *out = (-9223372036854775807LL - 1);
+            } else {
+                *out = -(long long)mag;
+            }
+        } else {
+            *out = (long long)mag;
+        }
+        return 1;
+    }
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out) {
+        unsigned long long sig;
+        int i;
+        int end;
+        int neg;
+        int started;
+        int nsig;
+        int exp;
+        int esign;
+        int eval;
+        double val;
+        if (doc->src[v.start] < '-' || doc->src[v.start] > '9') {
+            doc->read_err = JSON_READ_KIND;
+            return 0;
+        }
+        i = v.start;
+        end = v.start + v.len;
+        neg = 0;
+        if (doc->src[i] == '-') {
+            neg = 1;
+            i++;
+        }
+        sig = 0;
+        started = 0;
+        nsig = 0;
+        exp = 0;
+        while (i < end && doc->src[i] >= '0' && doc->src[i] <= '9') {
+            int d;
+            d = doc->src[i] - '0';
+            if (d != 0) {
+                started = 1;
+            }
+            if (started && nsig < 19) {
+                sig = sig * 10 + (unsigned long long)d;
+                nsig++;
+            } else if (started) {
+                exp++;
+            }
+            i++;
+        }
+        if (i < end && doc->src[i] == '.') {
+            i++;
+            while (i < end && doc->src[i] >= '0' && doc->src[i] <= '9') {
+                int d;
+                d = doc->src[i] - '0';
+                if (!started && d == 0) {
+                    exp--;
+                } else if (nsig < 19) {
+                    sig = sig * 10 + (unsigned long long)d;
+                    nsig++;
+                    started = 1;
+                    exp--;
+                }
+                i++;
+            }
+        }
+        if (i < end && (doc->src[i] == 'e' || doc->src[i] == 'E')) {
+            i++;
+            esign = 1;
+            if (i < end && (doc->src[i] == '+' || doc->src[i] == '-')) {
+                if (doc->src[i] == '-') {
+                    esign = -1;
+                }
+                i++;
+            }
+            eval = 0;
+            while (i < end && doc->src[i] >= '0' && doc->src[i] <= '9') {
+                if (eval < 100000) {
+                    eval = eval * 10 + (doc->src[i] - '0');
+                }
+                i++;
+            }
+            exp = exp + esign * eval;
+        }
+        if (exp > 400) {
+            exp = 400;
+        }
+        if (exp < -400) {
+            exp = -400;
+        }
+        val = (double)sig;
+        if (exp > 0) {
+            loop(exp) {
+                val = val * 10.0;
+                if (val > DBL_MAX) {
+                    doc->read_err = JSON_READ_RANGE;
+                    return 0;
+                }
+            }
+        } else {
+            loop(-exp) {
+                val = val / 10.0;
+            }
+        }
+        if (neg) {
+            val = -val;
+        }
+        *out = val;
+        return 1;
+    }
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    int offset_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.start;
+    }
+    int len_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.len;
+    }
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out) {
+        return jv_emit_raw(doc, v, out);
+    }
+}
+
+impl JsonValue for JsonTrueOps {
+    int kind() {
+        return JSON_TRUE;
+    }
+    int count(struct JsonDoc *doc, struct JsonView v) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out) {
+        *out = 1;
+        return 1;
+    }
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    int offset_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.start;
+    }
+    int len_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.len;
+    }
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out) {
+        return jv_emit_raw(doc, v, out);
+    }
+}
+
+impl JsonValue for JsonFalseOps {
+    int kind() {
+        return JSON_FALSE;
+    }
+    int count(struct JsonDoc *doc, struct JsonView v) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out) {
+        *out = 0;
+        return 1;
+    }
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    int offset_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.start;
+    }
+    int len_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.len;
+    }
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out) {
+        return jv_emit_raw(doc, v, out);
+    }
+}
+
+impl JsonValue for JsonNullOps {
+    int kind() {
+        return JSON_NULL;
+    }
+    int count(struct JsonDoc *doc, struct JsonView v) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    struct JsonView at(struct JsonDoc *doc, struct JsonView v, int index) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    struct JsonView member(struct JsonDoc *doc, struct JsonView v,
+            const char *key) {
+        doc->read_err = JSON_READ_KIND;
+        return jv_missing_view();
+    }
+    int as_int(struct JsonDoc *doc, struct JsonView v, long long *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_double(struct JsonDoc *doc, struct JsonView v, double *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_bool(struct JsonDoc *doc, struct JsonView v, int *out) {
+        doc->read_err = JSON_READ_KIND;
+        return 0;
+    }
+    int as_string(struct JsonDoc *doc, struct JsonView v, char *buf, int cap) {
+        doc->read_err = JSON_READ_KIND;
+        return -1;
+    }
+    int offset_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.start;
+    }
+    int len_of(struct JsonDoc *doc, struct JsonView v) {
+        return v.len;
+    }
+    int emit(struct JsonDoc *doc, struct JsonView v, struct JsonOut *out) {
+        return jv_emit_raw(doc, v, out);
+    }
+}
+
+/* one stateless instance per kind; the ifaces below borrow these addresses */
+static struct JsonObjectOps g_json_object_ops;
+static struct JsonArrayOps g_json_array_ops;
+static struct JsonStringOps g_json_string_ops;
+static struct JsonNumberOps g_json_number_ops;
+static struct JsonTrueOps g_json_true_ops;
+static struct JsonFalseOps g_json_false_ops;
+static struct JsonNullOps g_json_null_ops;
+
+static JsonValue json_ops_none(void) {
+    JsonValue ops;
+    ops.self = 0;
+    ops.vt = 0;
+    return ops;
+}
+
+static JsonValue json_ops_for(int kind) {
+    if (kind == JSON_OBJECT) {
+        return g_json_object_ops;
+    }
+    if (kind == JSON_ARRAY) {
+        return g_json_array_ops;
+    }
+    if (kind == JSON_STRING) {
+        return g_json_string_ops;
+    }
+    if (kind == JSON_NUMBER) {
+        return g_json_number_ops;
+    }
+    if (kind == JSON_TRUE) {
+        return g_json_true_ops;
+    }
+    if (kind == JSON_FALSE) {
+        return g_json_false_ops;
+    }
+    if (kind == JSON_NULL) {
+        return g_json_null_ops;
+    }
+    return json_ops_none();
+}
+
+/* validate the range, reset read_error, and pick the ops for its first byte */
+static JsonValue json_ops_for_view(struct JsonDoc *doc,
+        const struct JsonView *v) {
+    if (!jv_view_ok(doc, v)) {
+        doc->read_err = JSON_READ_MISSING;
+        return json_ops_none();
+    }
+    doc->read_err = JSON_READ_NONE;
+    return json_ops_for(jv_kind_of(doc->src, v->start));
+}
+
+/* ------------------------------------------------------------- reader impl */
+
+impl Json for JsonDoc {
+    int parse(const char *text, int len) {
+        int code;
+        int off;
+        int end;
+        int token_end;
+        self->src = text;
+        self->len = len > 0 ? len : 0;
+        self->err = JSON_OK;
+        self->off = 0;
+        self->root_start = 0;
+        self->root_len = 0;
+        self->read_err = JSON_READ_NONE;
+        if (text == 0 || len <= 0) {
+            self->err = JSON_ERR_EOF;
+            return 0;
+        }
+        code = JSON_OK;
+        off = 0;
+        token_end = jv_scan_value(text, len, 0, 1, jv_dmax(self), &code, &off);
+        if (token_end < 0) {
+            self->err = code;
+            self->off = off;
+            return 0;
+        }
+        end = jv_skip_ws(text, len, token_end);
+        if (end != len) {
+            self->err = JSON_ERR_TRAILING;
+            self->off = end;
+            return 0;
+        }
+        self->root_start = jv_skip_ws(text, len, 0);
+        self->root_len = token_end - self->root_start;
+        return 1;
+    }
+    int error() {
+        return self->err;
+    }
+    int error_offset() {
+        return self->off;
+    }
+    int error_line() {
+        int i;
+        int line;
+        line = 1;
+        for (i = 0; i < self->off && i < self->len; i++) {
+            if (self->src[i] == '\n') {
+                line++;
+            }
+        }
+        return line;
+    }
+    int error_column() {
+        int i;
+        int col;
+        col = 1;
+        for (i = 0; i < self->off && i < self->len; i++) {
+            if (self->src[i] == '\n') {
+                col = 1;
+            } else {
+                col++;
+            }
+        }
+        return col;
+    }
+    struct JsonView root() {
+        struct JsonView v;
+        v.start = self->err == JSON_OK ? self->root_start : -1;
+        v.len = self->err == JSON_OK ? self->root_len : 0;
+        return v;
+    }
+    int kind(struct JsonView *v) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return JSON_MISSING;
+        }
+        return ops.kind();
+    }
+    int count(struct JsonView *v) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return -1;
+        }
+        return ops.count(self, *v);
+    }
+    struct JsonView member(struct JsonView *v, const char *key) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return jv_missing_view();
+        }
+        return ops.member(self, *v, key);
+    }
+    struct JsonView at(struct JsonView *v, int index) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0 || index < 0) {
+            self->read_err = JSON_READ_MISSING;
+            return jv_missing_view();
+        }
+        return ops.at(self, *v, index);
+    }
+    int as_int(struct JsonView *v, long long *out) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return 0;
+        }
+        return ops.as_int(self, *v, out);
+    }
+    int as_double(struct JsonView *v, double *out) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return 0;
+        }
+        return ops.as_double(self, *v, out);
+    }
+    int as_bool(struct JsonView *v, int *out) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return 0;
+        }
+        return ops.as_bool(self, *v, out);
+    }
+    int as_string(struct JsonView *v, char *buf, int cap) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return -1;
+        }
+        return ops.as_string(self, *v, buf, cap);
+    }
+    int offset_of(struct JsonView *v) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return -1;
+        }
+        return ops.offset_of(self, *v);
+    }
+    int len_of(struct JsonView *v) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return -1;
+        }
+        return ops.len_of(self, *v);
+    }
+    int read_error() {
+        return self->read_err;
+    }
+    int emit(struct JsonView *v, struct JsonOut *out) {
+        JsonValue ops;
+        ops = json_ops_for_view(self, v);
+        if (ops.vt == 0) {
+            return 0;
+        }
+        return ops.emit(self, *v, out);
+    }
+}
+
+/* --------------------------------------------------------------- messages */
+
+static const char *json_message(int code) {
+    switch (code) {
+    case JSON_OK:
+        return "ok";
+    case JSON_ERR_EOF:
+        return "unexpected end of input";
+    case JSON_ERR_CHAR:
+        return "unexpected character";
+    case JSON_ERR_LITERAL:
+        return "bad literal";
+    case JSON_ERR_TRAILING:
+        return "trailing data";
+    case JSON_ERR_STRING:
+        return "control character in string";
+    case JSON_ERR_ESCAPE:
+        return "bad escape";
+    case JSON_ERR_UNICODE:
+        return "bad \\u escape";
+    case JSON_ERR_SURROGATE:
+        return "lone surrogate";
+    case JSON_ERR_NUMBER:
+        return "bad number";
+    case JSON_ERR_DEPTH:
+        return "nesting too deep";
+    default:
+        return "unknown error";
+    }
+}
+
+/* ------------------------------------------------------------ demo + tests */
+
+static const char *k_demo_text =
+    "{\n"
+    "  \"name\": \"ct\",\n"
+    "  \"tags\": [\"json\", \"zero-alloc\"],\n"
+    "  \"stars\": 42,\n"
+    "  \"ok\": true,\n"
+    "  \"none\": null\n"
+    "}";
+
+static const char *k_escape_text =
+    "\"a\\\"b\\\\c\\/d\\b\\f\\n\\r\\t\\u0041\\u00e9\\u20ac\\ud83d\\ude00\"";
+
+static const char *k_numbers_text =
+    "{\"i\":-9223372036854775808,"
+    "\"max\":9223372036854775807,"
+    "\"over\":9223372036854775808,"
+    "\"one\":1.0,"
+    "\"exp\":1.25e2,"
+    "\"tiny\":1e-300,"
+    "\"huge\":1e999,"
+    "\"sub\":1e-400}";
+
+static const char *k_edge_text =
+    "{\"empty_obj\":{},\"empty_arr\":[],\"dup\":1,\"dup\":2,"
+    "\"a\\u0062\":7,"
+    "\"nested\":[[1,[2,[3]]],true,null,\"s\"]}";
+
+static int g_failures;
+
+static void check(int cond, const char *what) {
+    if (cond) {
+        printf("ok   %s\n", what);
+    } else {
+        printf("FAIL %s\n", what);
+        g_failures++;
+    }
+}
+
+static void check_int(int got, int want, const char *what) {
+    if (got == want) {
+        printf("ok   %s = %d\n", what, want);
+    } else {
+        printf("FAIL %s: got %d, want %d\n", what, got, want);
+        g_failures++;
+    }
+}
+
+static void demo(void) {
+    struct JsonDoc doc;
+    struct JsonView root;
+    struct JsonView tags;
+    struct JsonView item;
+    char buf[32];
+    long long stars;
+    int ok;
+    int i;
+    int count;
+    printf("-- demo --\n");
+    if (!doc.parse(k_demo_text, (int)strlen(k_demo_text))) {
+        printf("demo: parse failed: %s\n", json_message(doc.error()));
+        g_failures++;
+        return;
+    }
+    root = doc.root();
+    item = doc.member(&root, "name");
+    doc.as_string(&item, buf, (int)sizeof buf);
+    printf("name  = %s\n", buf);
+    tags = doc.member(&root, "tags");
+    count = doc.count(&tags);
+    printf("tags  = %d", count);
+    for (i = 0; i < count; i++) {
+        item = doc.at(&tags, i);
+        doc.as_string(&item, buf, (int)sizeof buf);
+        printf(" %s", buf);
+    }
+    printf("\n");
+    item = doc.member(&root, "stars");
+    doc.as_int(&item, &stars);
+    printf("stars = %lld\n", stars);
+    item = doc.member(&root, "ok");
+    doc.as_bool(&item, &ok);
+    printf("ok    = %s\n", ok ? "true" : "false");
+    item = doc.member(&root, "none");
+    printf("none  = %s\n", doc.kind(&item) == JSON_NULL ? "null" : "not null");
+}
+
+static void test_reader(void) {
+    struct JsonDoc doc;
+    struct JsonView root;
+    struct JsonView v;
+    struct JsonView inner;
+    char buf[64];
+    char deep[140];
+    const char *raw;
+    long long n;
+    double d;
+    int len;
+    int i;
+
+    printf("-- reader --\n");
+    check(doc.parse(k_edge_text, (int)strlen(k_edge_text)) == 1,
+            "parse edge document");
+    check_int(doc.error(), JSON_OK, "error() after valid parse");
+    check_int(doc.error_line(), 1, "error_line() after valid parse");
+    check_int(doc.error_column(), 1, "error_column() after valid parse");
+    root = doc.root();
+    check_int(doc.kind(&root), JSON_OBJECT, "root kind");
+    check_int(doc.count(&root), 6, "root member count");
+    v = doc.member(&root, "empty_obj");
+    check_int(doc.kind(&v), JSON_OBJECT, "empty object kind");
+    check_int(doc.count(&v), 0, "empty object count");
+    v = doc.member(&root, "empty_arr");
+    check_int(doc.kind(&v), JSON_ARRAY, "empty array kind");
+    check_int(doc.count(&v), 0, "empty array count");
+    v = doc.member(&root, "dup");
+    check(doc.as_int(&v, &n) == 1, "duplicate key is readable");
+    check(n == 2, "duplicate key keeps the last value");
+    v = doc.member(&root, "ab");
+    check(doc.as_int(&v, &n) == 1 && n == 7, "escaped key matches decoded name");
+    v = doc.member(&root, "nested");
+    check_int(doc.count(&v), 4, "nested array count");
+    inner = doc.at(&v, 0);
+    check_int(doc.kind(&inner), JSON_ARRAY, "nested array kind");
+    inner = doc.at(&v, 1);
+    check_int(doc.kind(&inner), JSON_TRUE, "true kind");
+    inner = doc.at(&v, 2);
+    check_int(doc.kind(&inner), JSON_NULL, "null kind");
+    inner = doc.at(&v, 3);
+    check_int(doc.as_string(&inner, buf, (int)sizeof buf), 1, "array string length");
+    check(strcmp(buf, "s") == 0, "array string value");
+    v = doc.member(&root, "absent");
+    check_int(doc.kind(&v), JSON_MISSING, "missing member kind");
+    check_int(doc.read_error(), JSON_READ_MISSING, "missing member read_error");
+    inner = doc.at(&root, 0);
+    check_int(doc.read_error(), JSON_READ_KIND, "at() on object read_error");
+    check_int(doc.kind(&inner), JSON_MISSING, "at() on object yields missing");
+    v = doc.at(&root, -1);
+    check_int(doc.read_error(), JSON_READ_MISSING, "negative index read_error");
+    check_int(doc.kind(&v), JSON_MISSING, "negative index yields missing");
+
+    check(doc.parse(k_numbers_text, (int)strlen(k_numbers_text)) == 1,
+            "parse numbers document");
+    root = doc.root();
+    v = doc.member(&root, "i");
+    check(doc.as_int(&v, &n) == 1 && n == (-9223372036854775807LL - 1),
+            "int64 minimum");
+    v = doc.member(&root, "max");
+    check(doc.as_int(&v, &n) == 1 && n == 9223372036854775807LL,
+            "int64 maximum");
+    v = doc.member(&root, "over");
+    check(doc.as_int(&v, &n) == 0, "int64 overflow rejected");
+    check_int(doc.read_error(), JSON_READ_RANGE, "overflow read_error");
+    v = doc.member(&root, "one");
+    check(doc.as_int(&v, &n) == 0, "fractional number is not an int");
+    check_int(doc.read_error(), JSON_READ_INTEGER, "fraction read_error");
+    check(doc.as_double(&v, &d) == 1 && d == 1.0, "fractional number as double");
+    v = doc.member(&root, "exp");
+    check(doc.as_double(&v, &d) == 1 && d == 125.0, "exponent number");
+    v = doc.member(&root, "tiny");
+    check(doc.as_double(&v, &d) == 1 && d > 0.0 && d < 1e-299, "tiny exponent");
+    v = doc.member(&root, "huge");
+    check(doc.as_double(&v, &d) == 0, "overflowing real is rejected");
+    check_int(doc.read_error(), JSON_READ_RANGE, "real range read_error");
+    v = doc.member(&root, "sub");
+    check(doc.as_double(&v, &d) == 1 && d == 0.0, "underflow becomes zero");
+    v = doc.member(&root, "max");
+    check(doc.as_int(&v, &n) == 1, "integer is also a double source");
+    check(doc.as_double(&v, &d) == 1 && d > 9.2e18, "int64 max as double");
+
+    check(doc.parse(k_escape_text, (int)strlen(k_escape_text)) == 1,
+            "parse escape document");
+    root = doc.root();
+    check_int(doc.kind(&root), JSON_STRING, "escape root kind");
+    len = doc.as_string(&root, buf, (int)sizeof buf);
+    check_int(len, 22, "decoded escape length");
+    check((unsigned char)buf[0] == 'a' && buf[1] == '"' && buf[2] == 'b'
+            && buf[3] == '\\' && buf[4] == 'c' && buf[5] == '/'
+            && buf[6] == 'd', "decoded printable escapes");
+    check(buf[7] == '\b' && buf[8] == '\f' && buf[9] == '\n' && buf[10] == '\r'
+            && buf[11] == '\t', "decoded control escapes");
+    check((unsigned char)buf[12] == 'A', "\\u0041 is A");
+    check((unsigned char)buf[13] == 0xC3 && (unsigned char)buf[14] == 0xA9,
+            "\\u00e9 is UTF-8 e-acute");
+    check((unsigned char)buf[15] == 0xE2 && (unsigned char)buf[16] == 0x82
+            && (unsigned char)buf[17] == 0xAC, "\\u20ac is UTF-8 euro");
+    check((unsigned char)buf[18] == 0xF0 && (unsigned char)buf[19] == 0x9F
+            && (unsigned char)buf[20] == 0x98 && (unsigned char)buf[21] == 0x80,
+            "surrogate pair is UTF-8 emoji");
+    check(buf[22] == '\0', "decoded string is NUL terminated");
+    check_int(doc.as_string(&root, buf, 5), 22, "short buffer still reports length");
+    check_int((int)strlen(buf), 4, "short buffer holds cap - 1 bytes");
+    check_int(doc.offset_of(&root), 0, "offset_of");
+    check_int(doc.len_of(&root), (int)strlen(k_escape_text), "len_of");
+
+    raw = doc.src;
+    check(raw[0] == '"', "src is still the caller's text");
+    check_int(doc.read_error(), JSON_READ_NONE, "read_error after success");
+
+    len = 0;
+    for (i = 0; i < 64; i++) {
+        deep[len] = '[';
+        len++;
+    }
+    deep[len] = '0';
+    len++;
+    for (i = 0; i < 64; i++) {
+        deep[len] = ']';
+        len++;
+    }
+    check(doc.parse(deep, len) == 1, "64 nested arrays accepted");
+}
+
+static void test_writer(void) {
+    struct JsonOut out;
+    char text[256];
+    char measure[8];
+    double d;
+    int n;
+    int i;
+    int rc;
+
+    printf("-- writer --\n");
+    check(out.begin(text, (int)sizeof text) == 1, "begin");
+    check(out.object() == 1, "object");
+    check(out.key("name") == 1, "key");
+    check(out.string("ct") == 1, "string");
+    check(out.key("n") == 1 && out.integer(42) == 1, "integer");
+    check(out.key("pi") == 1 && out.real(3.5) == 1, "real");
+    check(out.key("ok") == 1 && out.boolean(1) == 1, "boolean");
+    check(out.key("none") == 1 && out.null() == 1, "null");
+    check(out.key("list") == 1 && out.array() == 1, "nested array");
+    check(out.integer(1) == 1 && out.string("two") == 1, "array values");
+    check(out.end() == 1 && out.end() == 1, "closing brackets");
+    n = out.finish();
+    check(n == (int)strlen("{\"name\":\"ct\",\"n\":42,\"pi\":3.5,\"ok\":true,\"none\":null,\"list\":[1,\"two\"]}"), "finish returns the required length");
+    check(strcmp(text,
+            "{\"name\":\"ct\",\"n\":42,\"pi\":3.5,\"ok\":true,\"none\":null,"
+            "\"list\":[1,\"two\"]}") == 0, "serialized document");
+    check_int(out.error(), JSON_EMIT_NONE, "writer error after success");
+
+    check(out.begin(measure, 0) == 1, "begin with cap = 0");
+    check(out.object() == 1 && out.key("a") == 1 && out.string("b") == 1
+            && out.end() == 1, "measure-only write");
+    check_int(out.finish(), 9, "measure-only length");
+
+    check(out.begin(text, (int)sizeof text) == 1, "begin for escaping");
+    check(out.string("a\"b\\c\nd\te\x01") == 1, "escaped string");
+    n = out.finish();
+    check(n == (int)strlen("\"a\\\"b\\\\c\\nd\\te\\u0001\""), "escaped string length");
+    check(strcmp(text, "\"a\\\"b\\\\c\\nd\\te\\u0001\"") == 0,
+            "escaped string bytes");
+
+    check(out.begin(text, (int)sizeof text) == 1, "begin for structural errors");
+    check(out.key("x") == 0 && out.error() == JSON_EMIT_STATE,
+            "key at top level is rejected");
+    check(out.begin(text, (int)sizeof text) == 1, "begin again");
+    check(out.integer(1) == 1, "one root value");
+    check(out.integer(2) == 0 && out.error() == JSON_EMIT_STATE,
+            "second root value is rejected");
+    check(out.begin(text, (int)sizeof text) == 1, "begin for pending key");
+    check(out.object() == 1 && out.key("x") == 1 && out.end() == 0
+            && out.error() == JSON_EMIT_STATE, "pending key is rejected");
+    check(out.begin(text, (int)sizeof text) == 1, "begin for depth");
+    rc = 1;
+    for (i = 0; i <= JSON_OUT_DEPTH && rc; i++) {
+        rc = out.array();
+    }
+    check(rc == 0 && out.error() == JSON_EMIT_DEPTH, "writer depth limit");
+    check(out.begin(text, (int)sizeof text) == 1, "begin for non-finite");
+    d = 0.0;
+    d = d / d;
+    check(out.real(d) == 0 && out.error() == JSON_EMIT_FINITE,
+            "NaN is rejected");
+}
+
+struct JsonBadCase {
+    const char *text;
+    int code;
+    int offset;
+    int line;
+    int column;
+};
+
+static void test_errors(void) {
+    struct JsonDoc doc;
+    struct JsonBadCase cases[25];
+    struct JsonView root;
+    struct JsonOut out;
+    char buf[256];
+    char deep[140];
+    char text[64];
+    int count;
+    int i;
+    int len;
+    int n;
+
+    printf("-- errors --\n");
+    count = 0;
+    cases[count].text = "";
+    cases[count].code = JSON_ERR_EOF;
+    cases[count].offset = 0;
+    cases[count].line = 1;
+    cases[count].column = 1;
+    count++;
+    cases[count].text = "{";
+    cases[count].code = JSON_ERR_EOF;
+    cases[count].offset = 1;
+    cases[count].line = 1;
+    cases[count].column = 2;
+    count++;
+    cases[count].text = "{\"a\"}";
+    cases[count].code = JSON_ERR_CHAR;
+    cases[count].offset = 4;
+    cases[count].line = 1;
+    cases[count].column = 5;
+    count++;
+    cases[count].text = "{\"a\":1,}";
+    cases[count].code = JSON_ERR_CHAR;
+    cases[count].offset = 7;
+    cases[count].line = 1;
+    cases[count].column = 8;
+    count++;
+    cases[count].text = "[1,]";
+    cases[count].code = JSON_ERR_CHAR;
+    cases[count].offset = 3;
+    cases[count].line = 1;
+    cases[count].column = 4;
+    count++;
+    cases[count].text = "{a:1}";
+    cases[count].code = JSON_ERR_CHAR;
+    cases[count].offset = 1;
+    cases[count].line = 1;
+    cases[count].column = 2;
+    count++;
+    cases[count].text = "tru";
+    cases[count].code = JSON_ERR_EOF;
+    cases[count].offset = 3;
+    cases[count].line = 1;
+    cases[count].column = 4;
+    count++;
+    cases[count].text = "truex";
+    cases[count].code = JSON_ERR_TRAILING;
+    cases[count].offset = 4;
+    cases[count].line = 1;
+    cases[count].column = 5;
+    count++;
+    cases[count].text = "01";
+    cases[count].code = JSON_ERR_NUMBER;
+    cases[count].offset = 1;
+    cases[count].line = 1;
+    cases[count].column = 2;
+    count++;
+    cases[count].text = "1.";
+    cases[count].code = JSON_ERR_EOF;
+    cases[count].offset = 2;
+    cases[count].line = 1;
+    cases[count].column = 3;
+    count++;
+    cases[count].text = ".5";
+    cases[count].code = JSON_ERR_CHAR;
+    cases[count].offset = 0;
+    cases[count].line = 1;
+    cases[count].column = 1;
+    count++;
+    cases[count].text = "+1";
+    cases[count].code = JSON_ERR_CHAR;
+    cases[count].offset = 0;
+    cases[count].line = 1;
+    cases[count].column = 1;
+    count++;
+    cases[count].text = "1e";
+    cases[count].code = JSON_ERR_EOF;
+    cases[count].offset = 2;
+    cases[count].line = 1;
+    cases[count].column = 3;
+    count++;
+    cases[count].text = "\"a\nb\"";
+    cases[count].code = JSON_ERR_STRING;
+    cases[count].offset = 2;
+    cases[count].line = 1;
+    cases[count].column = 3;
+    count++;
+    cases[count].text = "\"a\\x\"";
+    cases[count].code = JSON_ERR_ESCAPE;
+    cases[count].offset = 3;
+    cases[count].line = 1;
+    cases[count].column = 4;
+    count++;
+    cases[count].text = "\"\\u12g4\"";
+    cases[count].code = JSON_ERR_UNICODE;
+    cases[count].offset = 5;
+    cases[count].line = 1;
+    cases[count].column = 6;
+    count++;
+    cases[count].text = "\"\\ud800\"";
+    cases[count].code = JSON_ERR_SURROGATE;
+    cases[count].offset = 7;
+    cases[count].line = 1;
+    cases[count].column = 8;
+    count++;
+    cases[count].text = "\"\\udc00\"";
+    cases[count].code = JSON_ERR_SURROGATE;
+    cases[count].offset = 3;
+    cases[count].line = 1;
+    cases[count].column = 4;
+    count++;
+    cases[count].text = "{} {}";
+    cases[count].code = JSON_ERR_TRAILING;
+    cases[count].offset = 3;
+    cases[count].line = 1;
+    cases[count].column = 4;
+    count++;
+    cases[count].text = "{\n  \"a\":\n}";
+    cases[count].code = JSON_ERR_CHAR;
+    cases[count].offset = 9;
+    cases[count].line = 3;
+    cases[count].column = 1;
+    count++;
+
+    for (i = 0; i < count; i++) {
+        len = (int)strlen(cases[i].text);
+        if (doc.parse(cases[i].text, len) != 0) {
+            printf("FAIL case %d parsed\n", i);
+            g_failures++;
+            continue;
+        }
+        if (doc.error() != cases[i].code) {
+            printf("FAIL case %d code %d, want %d\n", i, doc.error(),
+                    cases[i].code);
+            g_failures++;
+            continue;
+        }
+        if (doc.error_offset() != cases[i].offset
+                || doc.error_line() != cases[i].line
+                || doc.error_column() != cases[i].column) {
+            printf("FAIL case %d position %d/%d/%d, want %d/%d/%d\n", i,
+                    doc.error_offset(), doc.error_line(), doc.error_column(),
+                    cases[i].offset, cases[i].line, cases[i].column);
+            g_failures++;
+            continue;
+        }
+        root = doc.root();
+        if (doc.kind(&root) != JSON_MISSING) {
+            printf("FAIL case %d root after error is not missing\n", i);
+            g_failures++;
+            continue;
+        }
+        printf("ok   error %d: %s at line %d column %d\n", i,
+                json_message(doc.error()), doc.error_line(), doc.error_column());
+    }
+
+    len = 0;
+    for (i = 0; i < 65; i++) {
+        deep[len] = '[';
+        len++;
+    }
+    deep[len] = '0';
+    len++;
+    for (i = 0; i < 65; i++) {
+        deep[len] = ']';
+        len++;
+    }
+    check(doc.parse(deep, len) == 0 && doc.error() == JSON_ERR_DEPTH
+            && doc.error_offset() == 64, "65 nested arrays rejected");
+
+    check(doc.parse(k_demo_text, (int)strlen(k_demo_text)) == 1,
+            "parse before round trip");
+    root = doc.root();
+    check(out.begin(buf, (int)sizeof buf) == 1, "begin for round trip");
+    check(doc.emit(&root, &out) == 1, "emit root view");
+    n = out.finish();
+    check(n == (int)strlen(k_demo_text), "round trip length");
+    check(strcmp(buf, k_demo_text) == 0, "round trip bytes");
+
+    check(doc.parse("{\"k\":\"v\"}", 9) == 1, "parse for emitted value");
+    root = doc.root();
+    check(out.begin(text, (int)sizeof text) == 1, "begin emitted value");
+    check(out.array() == 1, "array around emitted value");
+    check(doc.emit(&root, &out) == 1, "emit document inside array");
+    check(out.integer(7) == 1, "value after emit");
+    check(out.end() == 1, "close array around emit");
+    check(out.finish() == (int)strlen("[{\"k\":\"v\"},7]"), "emit length inside array");
+    check(strcmp(text, "[{\"k\":\"v\"},7]") == 0, "emit bytes inside array");
+
+    check(json_message(JSON_ERR_DEPTH) != 0, "message lookup");
+    printf("errors: %d messages checked\n", count);
+}
+
+int main(void) {
+    demo();
+    test_reader();
+    test_writer();
+    test_errors();
+    if (g_failures != 0) {
+        printf("FAILED %d\n", g_failures);
+        return 1;
+    }
+    printf("all checks passed\n");
+    return 0;
+}

@@ -1,0 +1,135 @@
+-- demo --
+name  = ct
+tags  = 2 json zero-alloc
+stars = 42
+ok    = true
+none  = null
+-- reader --
+ok   parse edge document
+ok   error() after valid parse = 0
+ok   error_line() after valid parse = 1
+ok   error_column() after valid parse = 1
+ok   root kind = 1
+ok   root member count = 6
+ok   empty object kind = 1
+ok   empty object count = 0
+ok   empty array kind = 2
+ok   empty array count = 0
+ok   duplicate key is readable
+ok   duplicate key keeps the last value
+ok   escaped key matches decoded name
+ok   nested array count = 4
+ok   nested array kind = 2
+ok   true kind = 5
+ok   null kind = 7
+ok   array string length = 1
+ok   array string value
+ok   missing member kind = 0
+ok   missing member read_error = 2
+ok   at() on object read_error = 1
+ok   at() on object yields missing = 0
+ok   negative index read_error = 2
+ok   negative index yields missing = 0
+ok   parse numbers document
+ok   int64 minimum
+ok   int64 maximum
+ok   int64 overflow rejected
+ok   overflow read_error = 3
+ok   fractional number is not an int
+ok   fraction read_error = 4
+ok   fractional number as double
+ok   exponent number
+ok   tiny exponent
+ok   overflowing real is rejected
+ok   real range read_error = 3
+ok   underflow becomes zero
+ok   integer is also a double source
+ok   int64 max as double
+ok   parse escape document
+ok   escape root kind = 3
+ok   decoded escape length = 22
+ok   decoded printable escapes
+ok   decoded control escapes
+ok   \u0041 is A
+ok   \u00e9 is UTF-8 e-acute
+ok   \u20ac is UTF-8 euro
+ok   surrogate pair is UTF-8 emoji
+ok   decoded string is NUL terminated
+ok   short buffer still reports length = 22
+ok   short buffer holds cap - 1 bytes = 4
+ok   offset_of = 0
+ok   len_of = 52
+ok   src is still the caller's text
+ok   read_error after success = 0
+ok   64 nested arrays accepted
+-- writer --
+ok   begin
+ok   object
+ok   key
+ok   string
+ok   integer
+ok   real
+ok   boolean
+ok   null
+ok   nested array
+ok   array values
+ok   closing brackets
+ok   finish returns the required length
+ok   serialized document
+ok   writer error after success = 0
+ok   begin with cap = 0
+ok   measure-only write
+ok   measure-only length = 9
+ok   begin for escaping
+ok   escaped string
+ok   escaped string length
+ok   escaped string bytes
+ok   begin for structural errors
+ok   key at top level is rejected
+ok   begin again
+ok   one root value
+ok   second root value is rejected
+ok   begin for pending key
+ok   pending key is rejected
+ok   begin for depth
+ok   writer depth limit
+ok   begin for non-finite
+ok   NaN is rejected
+-- errors --
+ok   error 0: unexpected end of input at line 1 column 1
+ok   error 1: unexpected end of input at line 1 column 2
+ok   error 2: unexpected character at line 1 column 5
+ok   error 3: unexpected character at line 1 column 8
+ok   error 4: unexpected character at line 1 column 4
+ok   error 5: unexpected character at line 1 column 2
+ok   error 6: unexpected end of input at line 1 column 4
+ok   error 7: trailing data at line 1 column 5
+ok   error 8: bad number at line 1 column 2
+ok   error 9: unexpected end of input at line 1 column 3
+ok   error 10: unexpected character at line 1 column 1
+ok   error 11: unexpected character at line 1 column 1
+ok   error 12: unexpected end of input at line 1 column 3
+ok   error 13: control character in string at line 1 column 3
+ok   error 14: bad escape at line 1 column 4
+ok   error 15: bad \u escape at line 1 column 6
+ok   error 16: lone surrogate at line 1 column 8
+ok   error 17: lone surrogate at line 1 column 4
+ok   error 18: trailing data at line 1 column 4
+ok   error 19: unexpected character at line 3 column 1
+ok   65 nested arrays rejected
+ok   parse before round trip
+ok   begin for round trip
+ok   emit root view
+ok   round trip length
+ok   round trip bytes
+ok   parse for emitted value
+ok   begin emitted value
+ok   array around emitted value
+ok   emit document inside array
+ok   value after emit
+ok   close array around emit
+ok   emit length inside array
+ok   emit bytes inside array
+ok   message lookup
+errors: 20 messages checked
+all checks passed
