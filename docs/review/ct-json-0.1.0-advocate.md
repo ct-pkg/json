@@ -1,5 +1,7 @@
 # ct-json 0.1.0 规范提案 · 主张席评估
 
+> **前提已变，结论待重估（2026-11-15）。** 本评审以「零分配视图」为默认前提；用户已裁定数据模型走树（[ADR-0001](../adr/0001-tree-data-model.md)）。文中以视图为前提的结论保留原文，不再作为设计依据。
+
 > 评估对象：`/Users/samxx/.trae-cn/assistant/2026-11-15/ct-json-spec/input/ct-json-spec.md`（下称「提案」，行号均指该文件）。
 > 基线：ct-json `3149eee`（`json.ct` 2,286 行 / `json.expected.out` 135 行 = 125 `ok` + 20 errors / 需求 38 条）；
 > ct-lang `8691c186`；编译器 `ct v0.44.1`（`~/.local/bin/ct`）；探针目录 `/tmp/ctjson-probe`（仓外，未入库）。

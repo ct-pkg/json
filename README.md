@@ -2,6 +2,11 @@
 
 > English · [中文](#中文)
 
+> **Status (2026-11-15):** the data model has been decided as a tree; the zero-allocation
+> view described below is superseded and will be replaced. See
+> [ADR-0001](docs/adr/0001-tree-data-model.md). This README documents the current 0.1.0
+> implementation, not the decided target.
+
 A single CT file that validates JSON, exposes a read-only view over the caller's
 text, and serializes values back out. It allocates nothing, owns nothing, and
 does not need a DOM: a parsed document is just the input bytes plus the offset of
@@ -88,7 +93,7 @@ Strings are escaped, including control bytes as `\u00XX`; `real` prints with
 `%.17g`. `emit` copies one view's bytes into a `JsonOut` so a parsed subtree can
 be embedded or round-tripped.
 
-## Limits
+## Limits (current 0.1.0 view implementation; superseded — see Status)
 
 - **Zero allocation.** No `malloc`, no hidden ownership; nesting depth and output
   size are the only resource limits (64 containers by default; set
@@ -117,6 +122,10 @@ when you need random access over large arrays, mutation, streaming of huge
 documents, schema validation, exact decimal arithmetic, or pretty printing.
 
 ## 中文
+
+> **状态（2026-11-15）：** 数据模型已裁定为树；下文描述的零分配视图（0.1.0 现有实现）
+> 已被取代，将按树模型重写。见 [ADR-0001](docs/adr/0001-tree-data-model.md)。本文只描述
+> 当前实现，不是已裁定的目标形态。
 
 一个 CT 文件：校验 JSON、在调用方文本上暴露只读视图、再把值序列化回去。全程
 不分配内存、不持有所有权、不建 DOM。解析后的“文档”就是原始字节加上第一个错误的
@@ -200,7 +209,7 @@ if (out.finish() < 0) { /* out.error() */ }
 `real` 用 `%.17g` 输出。`emit` 把一个视图的字节复制进 `JsonOut`，因此解析出的
 子树可以被嵌入或原样往返。
 
-### 边界与限制
+### 边界与限制（0.1.0 视图实现；已废止，见上方状态）
 
 - **零分配。** 没有 `malloc`，没有隐藏所有权；唯一的资源限制是嵌套深度（默认
   64 层容器，可在 `parse` 前改 `doc.depth_limit`）和输出长度。
