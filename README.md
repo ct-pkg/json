@@ -9,10 +9,12 @@
 > encode time. See [ADR-0001](docs/adr/0001-tree-data-model.md),
 > [ADR-0002](docs/adr/0002-mutable-scope.md), [ADR-0003](docs/adr/0003-reference-sharing.md),
 > [ADR-0004](docs/adr/0004-number-representation.md), [ADR-0005](docs/adr/0005-cycle-handling.md),
-> [ADR-0006](docs/adr/0006-public-refcount.md). The tree model and the write surface are
-> not implemented yet. The zero-allocation read-only view described below is the current
-> 0.1.0 implementation and is superseded; this README documents what exists, not the
-> decided target.
+> [ADR-0006](docs/adr/0006-public-refcount.md). Access is a transitional object-style call
+> (`doc.member(...)`); the target is `data.server.port` / `data["server"]` / `items[0].name`
+> once CT has subscript syntax ([ADR-0007](docs/adr/0007-js-style-access.md)). The tree model
+> and the write surface are not implemented yet. The zero-allocation read-only view described
+> below is the current 0.1.0 implementation and is superseded; this README documents what
+> exists, not the decided target.
 
 A single CT file that validates JSON, exposes a read-only view over the caller's
 text, and serializes values back out. It allocates nothing, owns nothing, and
@@ -137,6 +139,8 @@ arithmetic, or pretty printing.
 > 见 [ADR-0001](docs/adr/0001-tree-data-model.md)、[ADR-0002](docs/adr/0002-mutable-scope.md)、
 > [ADR-0003](docs/adr/0003-reference-sharing.md)、[ADR-0004](docs/adr/0004-number-representation.md)、
 > [ADR-0005](docs/adr/0005-cycle-handling.md)、[ADR-0006](docs/adr/0006-public-refcount.md)。
+> 访问目前是过渡的面向对象调用（`doc.member(...)`）；最终形态是 `data.server.port`、
+> `data["server"]`、`items[0].name` 这类下标/点号调用（[ADR-0007](docs/adr/0007-js-style-access.md)）。
 > 树模型与写入面均未实现。下文的零分配只读视图是 0.1.0 现有实现，已被取代；本文只描述
 > 「已有」，不描述「已决定」。
 
