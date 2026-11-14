@@ -2,10 +2,11 @@
 
 > English · [中文](#中文)
 
-> **Status (2026-11-15):** the data model has been decided as a tree; the zero-allocation
-> view described below is superseded and will be replaced. See
-> [ADR-0001](docs/adr/0001-tree-data-model.md). This README documents the current 0.1.0
-> implementation, not the decided target.
+> **Status (2026-11-15):** the decided scope is **read + write** over a tree
+> ([ADR-0001](docs/adr/0001-tree-data-model.md), [ADR-0002](docs/adr/0002-mutable-scope.md)).
+> The tree model and the write surface are not implemented yet. The zero-allocation
+> read-only view described below is the current 0.1.0 implementation and is superseded;
+> this README documents what exists, not the decided target.
 
 A single CT file that validates JSON, exposes a read-only view over the caller's
 text, and serializes values back out. It allocates nothing, owns nothing, and
@@ -118,14 +119,16 @@ be embedded or round-tripped.
 
 Use it for configuration files, small protocol payloads, logs and test fixtures
 where the whole text is already in memory and lookups are few. Use something else
-when you need random access over large arrays, mutation, streaming of huge
-documents, schema validation, exact decimal arithmetic, or pretty printing.
+when you need random access over large arrays, mutation (decided, not implemented
+yet — see Status), streaming of huge documents, schema validation, exact decimal
+arithmetic, or pretty printing.
 
 ## 中文
 
-> **状态（2026-11-15）：** 数据模型已裁定为树；下文描述的零分配视图（0.1.0 现有实现）
-> 已被取代，将按树模型重写。见 [ADR-0001](docs/adr/0001-tree-data-model.md)。本文只描述
-> 当前实现，不是已裁定的目标形态。
+> **状态（2026-11-15）：** 已决定的公开范围是**读 + 写**，数据模型为树
+> （[ADR-0001](docs/adr/0001-tree-data-model.md)、[ADR-0002](docs/adr/0002-mutable-scope.md)）；
+> 树模型与写入面均未实现。下文的零分配只读视图是 0.1.0 现有实现，已被取代；本文只描述
+> 「已有」，不描述「已决定」。
 
 一个 CT 文件：校验 JSON、在调用方文本上暴露只读视图、再把值序列化回去。全程
 不分配内存、不持有所有权、不建 DOM。解析后的“文档”就是原始字节加上第一个错误的
@@ -230,5 +233,5 @@ if (out.finish() < 0) { /* out.error() */ }
 ### 什么时候该用它
 
 适合整段文本已经在内存里、查找次数不多的场景：配置文件、小型协议报文、日志、
-测试夹具。需要大数组随机访问、原地修改、超大文档流式处理、schema 校验、精确
-十进制运算或格式化输出时，应换别的方案。
+测试夹具。需要大数组随机访问、原地修改（已决定、未实现，见上方状态）、超大文档
+流式处理、schema 校验、精确十进制运算或格式化输出时，应换别的方案。
