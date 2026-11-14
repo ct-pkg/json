@@ -3,9 +3,13 @@
 > English · [中文](#中文)
 
 > **Status (2026-11-15):** the decided scope is **read + write** over a tree whose
-> subobjects may be shared, with reference-counted lifetime
-> ([ADR-0001](docs/adr/0001-tree-data-model.md), [ADR-0002](docs/adr/0002-mutable-scope.md),
-> [ADR-0003](docs/adr/0003-reference-sharing.md)). The tree model and the write surface are
+> subobjects may be shared, with reference-counted lifetime (`json_retain` /
+> `json_release` public). Numbers are dual-track: parsed literals round-trip verbatim,
+> written values are int64 or double. Cycles may exist in memory and are rejected at
+> encode time. See [ADR-0001](docs/adr/0001-tree-data-model.md),
+> [ADR-0002](docs/adr/0002-mutable-scope.md), [ADR-0003](docs/adr/0003-reference-sharing.md),
+> [ADR-0004](docs/adr/0004-number-representation.md), [ADR-0005](docs/adr/0005-cycle-handling.md),
+> [ADR-0006](docs/adr/0006-public-refcount.md). The tree model and the write surface are
 > not implemented yet. The zero-allocation read-only view described below is the current
 > 0.1.0 implementation and is superseded; this README documents what exists, not the
 > decided target.
@@ -128,8 +132,11 @@ arithmetic, or pretty printing.
 ## 中文
 
 > **状态（2026-11-15）：** 已决定的公开范围是**读 + 写**，数据模型为树、子对象可共享，
-> 生命周期用引用计数管理（[ADR-0001](docs/adr/0001-tree-data-model.md)、
-> [ADR-0002](docs/adr/0002-mutable-scope.md)、[ADR-0003](docs/adr/0003-reference-sharing.md)）；
+> 生命周期用引用计数管理（`json_retain` / `json_release` 公开）。数字双轨：解析来的
+> 字面量原样回吐，程序写入的值分 int64 / double。内存里允许有环，encode 期拒绝。
+> 见 [ADR-0001](docs/adr/0001-tree-data-model.md)、[ADR-0002](docs/adr/0002-mutable-scope.md)、
+> [ADR-0003](docs/adr/0003-reference-sharing.md)、[ADR-0004](docs/adr/0004-number-representation.md)、
+> [ADR-0005](docs/adr/0005-cycle-handling.md)、[ADR-0006](docs/adr/0006-public-refcount.md)。
 > 树模型与写入面均未实现。下文的零分配只读视图是 0.1.0 现有实现，已被取代；本文只描述
 > 「已有」，不描述「已决定」。
 

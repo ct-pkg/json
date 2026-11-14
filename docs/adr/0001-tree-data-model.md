@@ -4,7 +4,7 @@
 - 日期：2026-11-15
 - 裁定者：用户
 - 废止对象：`DECISIONS.md` §1 的「零分配视图唯一」；§6「不提供可变 API」的正式废止见 [ADR-0002](0002-mutable-scope.md)
-- 后续修订：写入共享与 `json_free` 减计数语义见 [ADR-0003](0003-reference-sharing.md)
+- 后续修订：写入共享与 `json_free` 减计数见 [ADR-0003](0003-reference-sharing.md)；数字双轨见 [ADR-0004](0004-number-representation.md)；环与公开计数见 [ADR-0005](0005-cycle-handling.md)、[ADR-0006](0006-public-refcount.md)
 - 依据：ct-json 0.1.0 两份评审（[主张席](../review/ct-json-0.1.0-advocate.md)、[反证席](../review/ct-json-0.1.0-rebuttal.md)）与[合论](../review/ct-json-0.1.0-verdict.md)
 - 影响面：公开数据模型。本 ADR 不含实现，不改变当前 `json.ct`。
 
@@ -36,7 +36,7 @@
 
 1. **指针稳定**：节点独立分配；容器扩容不得让已取得的引用失效。
 2. **对象保插入序**：有序指针数组 + 哈希索引，查找 O(1)，encode 按插入序输出。
-3. **数字保留原始字面量**：`1.0` 不塌成 `1`，大整数不丢精度，encode 可原样吐回。
+3. **数字保留原始字面量**：`1.0` 不塌成 `1`，大整数不丢精度，encode 可原样吐回。该条只约束**解析来源**的节点；程序写入的值分 int64 / double 两支，见 [ADR-0004](0004-number-representation.md)。
 4. **显式释放**：用 `json_free`，不依赖 `Drop`（跨单元 `Drop` 当前是空桩）。自 ADR-0003 起，`json_free` 的语义是**减计数**，计数归零才真正释放，不是无条件销毁。
 
 ## 已知代价
