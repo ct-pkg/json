@@ -78,8 +78,9 @@
 
 > **废止（2026-11-15）。** 本节「不提供可变 API」不再作为设计依据。废止依据：用户裁定
 > 「ct-json 必须有写能力」；公开范围、操作面与四项待定见
-> [ADR-0002](docs/adr/0002-mutable-scope.md)。§1 的视图前提亦已于同日废止
-> （[ADR-0001](docs/adr/0001-tree-data-model.md)）。原文保留备查。
+> [ADR-0002](docs/adr/0002-mutable-scope.md)，其中待定 1、2 已由
+> [ADR-0003](docs/adr/0003-reference-sharing.md) 回答（引用共享 + 引用计数，`json_free` 为减计数）。
+> §1 的视图前提亦已于同日废止（[ADR-0001](docs/adr/0001-tree-data-model.md)）。原文保留备查。
 
 - **选项 A（原采纳，已废止）不提供**：视图不可变；修改一律用 `JsonOut` 重新构造。
 - **选项 B 提供 setter**：一旦原地改值，`{start, len}` 立即失效，必须引入缓冲区

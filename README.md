@@ -2,11 +2,13 @@
 
 > English · [中文](#中文)
 
-> **Status (2026-11-15):** the decided scope is **read + write** over a tree
-> ([ADR-0001](docs/adr/0001-tree-data-model.md), [ADR-0002](docs/adr/0002-mutable-scope.md)).
-> The tree model and the write surface are not implemented yet. The zero-allocation
-> read-only view described below is the current 0.1.0 implementation and is superseded;
-> this README documents what exists, not the decided target.
+> **Status (2026-11-15):** the decided scope is **read + write** over a tree whose
+> subobjects may be shared, with reference-counted lifetime
+> ([ADR-0001](docs/adr/0001-tree-data-model.md), [ADR-0002](docs/adr/0002-mutable-scope.md),
+> [ADR-0003](docs/adr/0003-reference-sharing.md)). The tree model and the write surface are
+> not implemented yet. The zero-allocation read-only view described below is the current
+> 0.1.0 implementation and is superseded; this README documents what exists, not the
+> decided target.
 
 A single CT file that validates JSON, exposes a read-only view over the caller's
 text, and serializes values back out. It allocates nothing, owns nothing, and
@@ -125,8 +127,9 @@ arithmetic, or pretty printing.
 
 ## 中文
 
-> **状态（2026-11-15）：** 已决定的公开范围是**读 + 写**，数据模型为树
-> （[ADR-0001](docs/adr/0001-tree-data-model.md)、[ADR-0002](docs/adr/0002-mutable-scope.md)）；
+> **状态（2026-11-15）：** 已决定的公开范围是**读 + 写**，数据模型为树、子对象可共享，
+> 生命周期用引用计数管理（[ADR-0001](docs/adr/0001-tree-data-model.md)、
+> [ADR-0002](docs/adr/0002-mutable-scope.md)、[ADR-0003](docs/adr/0003-reference-sharing.md)）；
 > 树模型与写入面均未实现。下文的零分配只读视图是 0.1.0 现有实现，已被取代；本文只描述
 > 「已有」，不描述「已决定」。
 
