@@ -262,8 +262,8 @@ AI_ENGINEERING_SPEC=<主规范路径> ...          # 覆盖默认主规范位置
 | 对话清单 | 需求池 / 技术池 / 评审三类常驻对话；phase 对话按 9.3 命名：`[ct-json] J<n> · <目标一句话>` |
 | 任务-对话映射 | [docs/session-map.md](docs/session-map.md) |
 | 门禁入口 | 未建（当前验收是单文件编译 + `json.expected.out` 比对；`tools/check.sh` 待建） |
-| 文档 snippet | 未建（`docs/snippets/` 待首个可运行示例收口后建） |
-| Issue 台账 | 未建（`issues/<id>.md`，前缀 `JSON-<n>`） |
+| 文档 snippet | [docs/snippets/](docs/snippets/README.md)（首个可运行示例已收口） |
+| Issue 台账 | [issues/](issues/)（前缀 `JSON-<n>`，当前 3 条） |
 | 决策记录 | [DECISIONS.md](DECISIONS.md)（实现期取舍；需求层裁定见 [docs/requirements.md](docs/requirements.md)） |
 | 版本落点 | `ct.pkg#version`（README 尚无版本行，收口时需要时补） |
 | 偏离项 | 无（见 0.3） |
