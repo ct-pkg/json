@@ -81,8 +81,8 @@
 | 断言数 | `json.expected.out` 中 125 条 `ok`（`grep -c '^ok '`）+ 20 条错误用例（`json.expected.out:134`）；golden 共 135 行，失败时程序非零退出（`json.ct:2280-2285`） |
 | 覆盖 | demo、reader、writer、errors 四段；含嵌套、空容器、重复键、转义键、int64 边界、实数上溢/下溢、64/65 层、20 条错误码+偏移+行列、emit 往返 |
 | 未覆盖 | 原生 `Map`/`Vec`、UTF-8 strict、实数正确舍入、深度硬上限、大数组性能、输出截断错误、含 NUL 往返、可 `import` 形态、ASan/LSan、fuzz |
-| 包声明 | `ct.pkg`：`name=json`、`version=0.1.0`、`licence=GPL-3.0-only`，**无 `requires`**；`json.ct:1` 另写 `//@ct-requires: ct-ast` |
-| 许可文件 | `LICENSE:1-3` 是 GPLv3 全文；上游来源 `DECISIONS.md:3` 写明“原 `examples/json/`”，而 `ct-lang/LICENSE.EXCEPTION:28-46` 写明 `examples/` 全部按 MIT 授权 |
+| 包声明 | `ct.pkg`：`name=json`、`version=0.1.0`、`licence=MIT`，**无 `requires`**；`json.ct:1` 另写 `//@ct-requires: ct-ast` |
+| 许可文件 | `LICENSE:1-2` 是 MIT 全文（`Copyright (c) 2026 Sam X. Xu`）；上游来源 `DECISIONS.md:3` 写明“原 `examples/json/`”，而 `ct-lang/LICENSE.EXCEPTION:28-46` 写明 `examples/` 全部按 MIT 授权 |
 | 门禁 | 仓内无 `tools/check.sh`、无 CI、无 `tests/`；验收只有“编译后跑 main 并 diff golden” |
 
 ### 3.4 现状结论
@@ -149,7 +149,7 @@
 | --- | --- | --- | --- | --- |
 | R-E-01 | 包必须可 `import`，而不是复制 2,286 行含 `main` 的单文件 | ① 拆出 `.h.ct` / `.ct` 后消费者 `import json;` 可编译运行；② 生成头不含 `main`、demo、测试；③ README 给出 import 用法 | 需新增 | `json-package-refactor.md:56-78`；`README.md:145-146` |
 | R-E-02 | 公开面必须最小且可枚举；实现细节不得进生成头 | ① 导出符号清单冻结并脚本比对；② 7 个 `Json*Ops` 结构体不出现；③ 公开结构体字段宽度不依赖 `JSON_OUT_DEPTH` 宏，否则消费者报未声明标识符 | 需新增 | `json-package-refactor.md:19-41`、`76`；`json.ct:69`、`99-100`、`899-918` |
-| R-E-03 | 许可必须与同批包及上游权利一致，未裁定前不得发布 | ① `ct.pkg#licence`、`LICENSE`、`README` 三处一致；② 许可裁定见 Q-02；③ 静态链入闭源程序的义务在 README 写明（若保留 GPL） | 待确认 | `ct.pkg:5`；`LICENSE:1-3`；`ct-lang/LICENSE.EXCEPTION:28-46`；`ct-sse/LICENSE:1` |
+| R-E-03 | 许可必须与同批包及上游权利一致 | ① `ct.pkg#licence`、`LICENSE`、`README` 三处一致为 MIT；② 许可裁定见 Q-02（已裁定 MIT）；③ MIT 只要求保留版权与许可声明，静态链入闭源程序无需开源 | 已满足 | `ct.pkg:10`；`LICENSE:1-2`；`ct-lang/LICENSE.EXCEPTION:28-46`；`ct-sse/LICENSE:1` |
 | R-E-04 | 编译器下限与依赖必须声明 | ① `ct.pkg#requires` 非空且与 `//@ct-requires` 一致；② 视图 API 下限 v0.22.0（`loop`）；树 API 下限 v0.30.0（`Vec`/`Map`），用 `Str` 则 v0.36.0；③ 低于下限时 `ct get` 报 `requires` 文案 | 需新增 | `roadmap.md:38,45,52`；`json.ct:24-26` |
 | R-E-05 | 每条判据必须可执行并有负例，不能只靠人读文档 | ① 现有 125 条 `ok` + 20 条 errors 保留；② 新增需求每条至少 1 正 1 负；③ 一条命令跑完全部断言，失败输出 R 编号；④ ASan/LSan 覆盖 R-D-03 / R-C-05 | 需新增 | `json.expected.out:134-135`；`json.ct:2275-2286` |
 | R-E-06 | README 必须与实现一致，新增模型后不得留旧承诺 | ① 现有“零分配 / O(n) / 精度 / 不校验 UTF-8 / 无 DOM”逐条与代码一致；② 树模型落地后补所有权、性能、内存模型、与视图的分工；③ 删除或改写与 Q-01 冲突的表述 | 已满足 / 需变更 | `README.md:91-117`；`DECISIONS.md:14-23`、`69-75`、`77-88`、`99-106` |
@@ -159,7 +159,7 @@
 | 编号 | 冲突 | 证据 | 影响 | 状态 |
 | --- | --- | --- | --- | --- |
 | X-01 | **数据模型路线**：需求口述“decode 落到原生 `Map`/`Vec`”，现有实现是零分配只读视图，且既有文档明确“不做 DOM” | 需求侧：本次任务书；现状：`README.md:93-95`、`108-110`，`DECISIONS.md:14-23`、`69-75`；外部决策：`json-package-refactor.md:8-9`（“不实现可变 DOM；需要建树…直接用 cJSON”）、`:82`；`ct-pkg-agent-runtime.md:163`（保持“样例”定位） | 若选树模型：D 组全部成立，但包定位、内存模型、README、`DECISIONS.md`、`ct.pkg` 描述都要改；若选视图：D 组整体作废，B-06 作废，本文降级为“现状需求固化” | **已定**：树为唯一公开模型（ADR-0001，2026-11-15）；视图降为可选只读层 |
-| X-02 | **许可来源不一致**：本包声明 GPL-3.0-only 并附 GPLv3 全文，但代码来自 `ct-lang/examples/json/`，上游明确 `examples/` 为 MIT | `ct.pkg:5`；`LICENSE:1-3`；`DECISIONS.md:3`；`ct-lang/LICENSE.EXCEPTION:28-46`（Copyright (c) 2026 Sam X. Xu） | 改 MIT 有据，但需版权人确认；未裁定前不应发布索引；静态链入闭源 Agent 的义务见 Q-02 | **待 Q-02** |
+| X-02 | **许可来源**：代码来自 `ct-lang/examples/json/`，上游明确 `examples/` 为 MIT；本包现已对齐为 MIT | `ct.pkg:10`；`LICENSE:1-2`；`DECISIONS.md:3`；`ct-lang/LICENSE.EXCEPTION:28-46`（Copyright (c) 2026 Sam X. Xu） | 2026-11-16 已裁定统一为 MIT，`ct.pkg` 与 `LICENSE` 改齐；静态链入闭源程序只需保留版权与许可声明 | **已定**：MIT（Q-02） |
 | X-03 | **包定位不一致**：README 定位“配置/小报文”，外部提案称“迁出 examples 不等于可对外承诺”，本次任务要求“需求先行 + 正式交付” | `README.md:112-117`；`json-package-refactor.md:17`；`ct-pkg-agent-runtime.md:163` | 影响版本承诺（R-E-04）、是否建 CHANGELOG、是否冻结 API；不影响单条实现判据 | **待 Q-06** |
 
 ## 6 明确不做（非目标）
@@ -196,7 +196,7 @@
 | 方法级可见性 | 让 helper 真正私有 | 不支持 | **软阻塞**：`.ct` 内 `static` 自由函数绕行（R-E-02） |
 | 借用检查 | 防止视图/树指针逃逸 | 不支持 | **软阻塞**：契约 + 负例（R-D-03、R-E-05） |
 
-**结论：按本文口径，CT 语言硬阻塞 0 条。** 软阻塞 3 条，均有不改语言的绕行方案。另有 2 条**非语言硬阻塞**：Q-01（数据模型路线）、Q-02（许可），未裁定前 D 组与发布动作不得开工。
+**结论：按本文口径，CT 语言硬阻塞 0 条。** 软阻塞 3 条，均有不改语言的绕行方案。非语言硬阻塞 0 条：Q-01（数据模型路线）与 Q-02（许可）均已裁定（ADR-0001、MIT），D 组与发布动作不再受阻。
 
 > 上表基于 CT v0.44.1；v0.52.0 复评后：Q-01 已定（ADR-0001），`v[0]` 不支持、只提供 `get_idx`，`get`/`set` 需 `pub`，泛型容器不释放用户 struct 元素。以 `docs/spec/ct-json-0.1.0.md` 与 `docs/review/ct-json-0.1.0-reeval-v0.52.0.md` 为准。
 
@@ -207,7 +207,7 @@
 | 编号 | 待确认项 | 现状与可选口径 | 不确认会卡住什么 |
 | --- | --- | --- | --- |
 | Q-01 | **数据模型路线**：视图、树、还是两者并存 | 现状：零分配视图（`README.md:93-95`、`DECISIONS.md:14-23`）；任务口述：decode 到原生 `Map`/`Vec`；外部已定：不实现可变 DOM、需要建树用 cJSON（`json-package-refactor.md:8-9`）。口径 A：两者并存（视图保留，新增树 API）；口径 B：树为唯一公开模型；口径 C：视图为唯一模型（撤销 D 组） | **整份 D 组、B-06、R-C-05、R-E-04 的版本下限**；也决定 README / `DECISIONS.md` / `ct.pkg` 描述是否要改写。这是本包最大的范围分歧 |
-| Q-02 | **许可**：保持 GPL-3.0-only、改 MIT、还是双许可 | 现状：`ct.pkg:5` + `LICENSE` 均为 GPLv3；上游 `examples/` 为 MIT（`ct-lang/LICENSE.EXCEPTION:28-46`）；同批 `ct-sse` / `ct-fsguard` 为 MIT。口述影响：静态链入闭源 Agent——GPL-3.0 要求整个分发作品按 GPL 开源并提供源码；MIT 仅需保留版权与许可声明；双许可需版权人明确授权。**本文件不改许可文件，只列选项。** | 卡住发布与索引收录（R-E-03）；卡住闭源 Agent 的合规结论；也卡住 README 是否需要写 GPL 义务。版权人确认前不得改 `ct.pkg` 或 `LICENSE` |
+| Q-02 | **许可（已裁定 MIT）** | 现状：`ct.pkg:10` + `LICENSE` 均为 MIT；上游 `examples/` 为 MIT（`ct-lang/LICENSE.EXCEPTION:28-46`）；同批 `ct-sse` / `ct-fsguard` 为 MIT。2026-11-16 用户裁定统一为 MIT；MIT 仅需保留版权与许可声明，静态链入闭源 Agent 无需开源。 | 原卡点已解除：发布与索引收录（R-E-03）、闭源 Agent 的合规结论 |
 | Q-03 | **错误模型**：错误码/位置/文案/部分失败 | 现状：解析错误 = 码 + 字节偏移 + 1-based 行列（`json.ct:1624-1653`）；访问器错误独立五值（`json.ct:56-60`）；文案由 `json_message` 提供，未声明稳定（`json.ct:1756-1783`）。口径 A：码与偏移冻结、文案冻结、树模型失败不返回部分结果；口径 B：码与偏移冻结、文案只保证非空、树模型返回部分结果 + 错误位 | 卡住 R-C-03、R-C-05 的期望值；卡住 golden 是否比对文案；卡住调用方是否需要自行清理部分树 |
 | Q-04 | **数字精度承诺** | 整数：int64 精确（`json.ct:1234-1283`）。实数：19 位有效数字、指数钳 ±400、末位可能差（`json.ct:1284-1383`；`README.md:100-104`）。口径 A：实数与 `strtod` 正确舍入一致，超 int64 整数转 double；口径 B：实数保持现状但文档降级，超 int64 整数报 `JSON_READ_RANGE`；口径 C：整数优先、实数只在明确需要时转 | 卡住 R-A-09、R-D-05；卡住 encode 的最短往返文本（R-B-07）；卡住是否引入大整数/正确舍入实现 |
 | Q-05 | **Unicode 承诺** | 现状：解码 `\uXXXX` + 代理对；孤立代理拒绝；输入不做 UTF-8 校验；BOM 不剥离；含 NUL 字符串在 writer 处截断（`json.ct:193-264`、`711`）。口径 A：默认宽松 + `strict` 开关校验 UTF-8，BOM 可选剥离；口径 B：始终不校验 UTF-8、BOM 一律拒绝；键含 `\u0000` 一律拒绝（Map key 是 `char*`） | 卡住 R-A-08、R-A-12、R-D-06、R-B-04；卡住“合法输入”的定义与负例集合 |
@@ -222,5 +222,5 @@
 - 文件拆分、单元命名、导出符号清单的最终版本：属设计层。
 - phase 卡、任务切分、排期、版本号、tag、索引提交与发布：属立项后事项。
 - 修改 `ct-lang` 仓库、修改 `Vec`/`Map` 语义、新增语言关键字：不在本次边界。
-- 许可变更动作：本文只列选项与影响，不修改 `ct.pkg` / `LICENSE`。
+- 许可变更动作：本文不承担；许可已于 2026-11-16 统一为 MIT（见 Q-02）。
 - 外部实测数字（1.9 GB/s、1,240 ms、10^6 样本）来自 `json-package-refactor.md`，本仓**未复跑**，只作为需求阈值来源，不作为现状判据。
