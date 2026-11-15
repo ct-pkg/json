@@ -202,7 +202,7 @@ pub void json_free(JsonRef v);   // 等价于 json_release 一次
 | J2 | 支持 | `json_arr_len(root)`；元素用 `get_idx(i)` |
 | J3 | 支持 | `json_tag(root)` 分派；`pub enum` 可用 |
 | J4 | **不支持** | 0.1.0 只返回负错误码，不提供 `JsonError{line,col,message}`；`message` 所有权无裁定。升级路径：0.1.1 迁到错误对象（code + offset + message） |
-| J5 | 支持 | `JsonRef h = doc["server"]["host"];` 在声明初始化/赋值位置可用；作为函数参数时不可用（§5.1） |
+| J5 | 支持 | `JsonRef h = doc["server"]["host"];` 在声明初始化/赋值位置可用；两级链直接作函数参数时不可用（§5.1） |
 | J6 | 支持（改写） | `long long port; json_as_int(doc["port"], &port);`；无自动转换 |
 | J7 | 支持 | `has` 区分缺失；`get` 不崩 |
 | J8 | **不支持** | 0.1.0 不提供 `json_str` 等构造辅助，`json_encode` 只留单入口；原断言形态不成立。升级路径：0.1.1 补构造 API（仍单入口），否则在 0.1.1 明确废弃原断言 |
@@ -226,7 +226,7 @@ pub void json_free(JsonRef v);   // 等价于 json_release 一次
 | 指针接收者 `p["k"]` | 不展开，落 C 语义 | 用 `JsonRef` 值句柄，不用 `JsonNode*` 做公开入口 |
 | 两级链 `v["a"]["b"]` | 可用（声明初始化/赋值位置）；三级链报临时值错误 | 见 §5.1 正例 |
 | 方法结果链 `v.get("a").get("b")` | 不支持：`method receiver must be a variable, an element, a call or a field chain` | 拆成 `JsonRef a = doc.get("a"); JsonRef b = a.get("b");` |
-| 对临时值调方法 `doc["a"].has(k)` | 不支持：`a method call on a temporary is only allowed at the start of a statement or of an assignment` | 先取局部变量 |
+| 对临时值调方法 `doc["a"].has(k)` | 不支持：`method receiver must be a variable, an element, a call or a field chain` | 先取局部变量 |
 | 经 union 成员的方法调用 | 不支持（`unknown receiver type`） | 先取到局部变量再调用 |
 | 自动转换 | 不存在 | 显式 `json_as_int` / `json_as_str` |
 | 同名重载 | 不支持（C 层冲突） | 一个名字一个函数；编码只留单入口 |
@@ -249,9 +249,9 @@ port_ref = doc["server"]["port"];         // 赋值位置
 JsonRef c = doc["a"]["b"]["c"];
 // error: a method call on a temporary is only allowed at the start of a statement or of an assignment
 
-// 2) 对临时值调方法
+// 2) 对临时值调方法（报错与三级链不是同一条）
 doc["server"].has(k);
-// error: 同上
+// error: method receiver must be a variable, an element, a call or a field chain
 
 // 3) 把两级下标链当函数参数
 take(doc["server"]["port"]);
