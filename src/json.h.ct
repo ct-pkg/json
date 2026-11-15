@@ -185,6 +185,16 @@ pub JsonRef json_member(JsonRef v, Str key);
    `len`; 0 out of range. */
 pub char *json_obj_key_at(JsonRef v, int i, int *len);
 
+/* Members of `JsonRef` (all `pub`, so the subscript protocol also works across
+   units):
+     get(char *key)             v["key"]            borrowed handle
+     set(char *key, JsonRef v)  v["key"] = v        shared write
+     has(Str key)               presence, NUL-safe
+     get_idx(int i)             array read (0.1.0 stand-in for v[i])
+     set_idx(int i, JsonRef v)  overwrite only, JSON_ERR_RANGE when out of range
+     push(JsonRef v)            append
+     set_int/set_double/set_bool/set_null/set_str/remove   Str keys only */
+
 /* ------------------------------------------------------------- internals */
 
 #define J1_DEPTH_LIMIT 64
@@ -372,6 +382,46 @@ static int j1_arr_push(JsonArr *a, JsonRef val)
     a->items[a->len] = val;
     a->len = a->len + 1;
     return 1;
+}
+
+/* Stores one node under `key`, taking ownership of the reference on `value`.
+ * Used by the `set_*` methods, so they cannot disagree about lifetime. */
+static void j1_obj_store(JsonRef owner, Str key, JsonRef value)
+{
+    JsonObj *o;
+    if (owner.p == 0 || owner.p->tag != JSON_TAG_OBJ || key.len < 0) {
+        json_release(value);
+        return;
+    }
+    o = owner.p->v.obj;
+    if (o == 0) {
+        json_release(value);
+        return;
+    }
+    if (!j1_obj_put(o, key, value)) json_release(value);
+}
+
+static JsonRef j1_num_int(long long v)
+{
+    JsonRef r = j1_node_make(JSON_TAG_NUM);
+    r.p->num_kind = 1;
+    r.p->v.i = v;
+    return r;
+}
+
+static JsonRef j1_num_double(double v)
+{
+    JsonRef r = j1_node_make(JSON_TAG_NUM);
+    r.p->num_kind = 2;
+    r.p->v.d = v;
+    return r;
+}
+
+static void j1_obj_reindex(JsonObj *o)
+{
+    int i;
+    o->index->clear();
+    for (i = 0; i < o->len; i = i + 1) o->index->put(o->keys[i], i);
 }
 
 static void j1_fail(struct J1Parser *p, int code)
@@ -947,7 +997,7 @@ static void j1_enc(struct J1Buf *b, JsonRef v, int depth)
 {
     if (b->bad != 0) return;
     if (v.p == 0) {
-        b->bad = JSON_ERR_TYPE;
+        j1_puts(b, "null");
         return;
     }
     if (depth > J1_ENC_DEPTH_LIMIT) {
@@ -1130,6 +1180,38 @@ pub char *json_obj_key_at(JsonRef v, int i, int *len)
 /* ------------------------------------------------- members and arrays */
 
 impl JsonRef {
+    /* Subscript protocol entry: `v["key"]` lowers to `v.get("key")` (Phase 52).
+       The `char *` parameter is the single documented exception to the Str-key
+       rule, because that is the shape the protocol passes a literal in. It is
+       converted to `Str` for the lookup and never stored. The answer is a
+       borrowed handle: retain it if it must outlive its container. */
+    pub JsonRef get(char *key)
+    {
+        Str k;
+        JsonRef r;
+        if (self->p == 0 || self->p->tag != JSON_TAG_OBJ || key == 0) return j1_empty();
+        k = str_from(key);
+        if (k.len < 0) return j1_empty();
+        r = json_member(*self, k);
+        k.release();
+        return r;
+    }
+
+    /* Subscript protocol entry: `v["key"] = x` lowers to `v.set("key", x)`.
+       The write is shared (ADR-0003): the container keeps its own reference and
+       the caller keeps and releases its handle. The key is converted to `Str`
+       and deep-copied by the container. */
+    pub void set(char *key, JsonRef value)
+    {
+        Str k;
+        if (self->p == 0 || self->p->tag != JSON_TAG_OBJ || key == 0) return;
+        k = str_from(key);
+        if (k.len < 0) return;
+        json_retain(value);
+        j1_obj_store(*self, k, value);
+        k.release();
+    }
+
     /* Key presence with the same comparison `json_member` uses, so an embedded
        U+0000 is data and a missing key is distinguishable from an explicit
        null. */
@@ -1188,16 +1270,60 @@ impl JsonRef {
        container, so the caller still owns `key` and releases it. */
     pub void set_str(Str key, char *text, int len)
     {
-        JsonRef v;
-        Str s;
-        if (self->p == 0 || self->p->tag != JSON_TAG_OBJ || key.len < 0) return;
-        v = j1_node_make(JSON_TAG_STR);
-        s = str_from_len(text, len);
+        JsonRef v = j1_node_make(JSON_TAG_STR);
+        Str s = str_from_len(text, len);
         if (s.len < 0) {
             j1_node_destroy(v.p);
             return;
         }
         v.p->v.s = s;
-        if (!j1_obj_put(self->p->v.obj, key, v)) json_release(v);
+        j1_obj_store(*self, key, v);
+    }
+
+    pub void set_int(Str key, long long value)
+    {
+        j1_obj_store(*self, key, j1_num_int(value));
+    }
+
+    pub void set_double(Str key, double value)
+    {
+        j1_obj_store(*self, key, j1_num_double(value));
+    }
+
+    pub void set_bool(Str key, int value)
+    {
+        JsonRef v = j1_node_make(JSON_TAG_BOOL);
+        v.p->v.b = value ? 1 : 0;
+        j1_obj_store(*self, key, v);
+    }
+
+    pub void set_null(Str key)
+    {
+        j1_obj_store(*self, key, j1_node_make(JSON_TAG_NULL));
+    }
+
+    /* Drops one member: releases the value reference and the key copy, shifts
+       the tail left so insertion order survives, then rebuilds the key index. */
+    pub void remove(Str key)
+    {
+        JsonObj *o;
+        int *slot;
+        int i, j;
+        if (self->p == 0 || self->p->tag != JSON_TAG_OBJ || key.len < 0) return;
+        o = self->p->v.obj;
+        if (o == 0) return;
+        slot = o->index->get(key);
+        if (slot == 0) return;
+        i = *slot;
+        json_release(o->vals[i]);
+        free(o->keys[i].data);
+        o->keys[i].data = 0;
+        o->keys[i].len = -1;
+        for (j = i; j + 1 < o->len; j = j + 1) {
+            o->keys[j] = o->keys[j + 1];
+            o->vals[j] = o->vals[j + 1];
+        }
+        o->len = o->len - 1;
+        j1_obj_reindex(o);
     }
 }
