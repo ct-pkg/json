@@ -135,4 +135,4 @@ ctc: 1 error(s) generated
 
 `docs/snippets/js_style/` 覆盖点访问、链式写、值语义、打印、迭代与字面量键，每条文件头标注 **(a)** 今天可用 / **(b)** 只需改库或 std 接口 / **(c)** CT 语言缺能力。评估结论见 [ct-json-0.1.0-js-style-eval.md](../review/ct-json-0.1.0-js-style-eval.md)。
 
-目标编号 10～14 是本轮新增的下标 / 可选链 / 追加样例，逐条命令与原始输出见 [js_style/README.md](js_style/README.md)；其中 `proposal/js_append_empty.ct`（`v[] = x`，PH-61）单独放在 `proposal/`，标注为「提案形态、当前不可运行」。
+目标编号 10～13 是本轮新增的下标 / 可选链 / 追加样例，全部在当前 CT v0.53.0 上实跑通过，逐条命令与原始输出见 [js_style/README.md](js_style/README.md)。空方括号 `v[] = x` 拟占 PH-61、尚未实现，不提供样例。

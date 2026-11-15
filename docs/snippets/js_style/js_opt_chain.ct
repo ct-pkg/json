@@ -1,0 +1,29 @@
+/* (a) 今天可用 | 目标 11b：`?.` 链 —— 多级指针链，任一环为空即落空状态。 */
+#include <stdio.h>
+
+struct Node {
+    struct Node *next;
+    int v;
+}
+
+int main(void)
+{
+    struct Node tail;
+    struct Node head;
+    struct Node *none = 0;
+    int mid;
+    int beyond;
+    int null_field;
+
+    tail.next = 0;
+    tail.v = 7;
+    head.next = &tail;
+    head.v = 1;
+
+    mid = head.next?.v;             /* 一级：7 */
+    beyond = head.next?.next?.v;    /* 两级：tail.next 为空 → 0 */
+    null_field = none?.v;           /* 接收者本身为空 → 0 */
+
+    printf("mid=%d beyond=%d none?.v=%d\n", mid, beyond, null_field);
+    return 0;
+}
