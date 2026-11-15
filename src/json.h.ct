@@ -1,143 +1,187 @@
 /*
- * json.h.ct -- J1: the tree model of ct-json.
+ * json.h.ct -- ct-json 0.1.0 (CT v0.52.0 rewrite).
  *
- * A decoded document is a tagged `JsonValue` tree. Objects are
- * `Map<char *, JsonRef *>` and arrays are `Vec<JsonRef *>`: the elements are
- * pointers on purpose, because a value element (`Map<char *, JsonRef>`) makes
- * the generated `Vec.h` declare `struct JsonRef value;` where only a forward
- * declaration is visible, and `cc` answers
- * `field has incomplete type 'struct JsonRef'` (see docs/j1-ct-limits.md).
+ * Shard 1 of the in-progress rewrite: the tree is a reference-counted
+ * `JsonNode`, and both containers release their elements through an explicit
+ * `impl Drop` loop. Keys are still `char *` here; shard 2 switches them to
+ * `Str`.
  *
- * Ownership: every node (a `JsonValue`, a `JsonRef` wrapper, a key copy and a
- * string value) is one `malloc`. There is no `Drop` and no refcount; the only
- * release entry is `json_free`, which walks the whole tree. Keys are copied by
- * `json_decode` because `Map::put` does not copy them.
+ * Model (docs/spec/ct-json-0.1.0.md §二):
+ *   JsonRef     8-byte value handle over a `JsonNode`; copying the handle does
+ *               not change the count, `json_retain` / `json_release` do.
+ *   JsonNode    tag + refs + num_kind + a named `JsonValue` union.
+ *   JsonObj     insertion-ordered key array + value array; owns key copies.
+ *   JsonArr     element array; owns one reference per element.
  *
- * Scope of J1: decode, encode, and read access. No path helper, no `json_set`,
- * no subscript syntax. Documented limits live in docs/j1-ct-limits.md; the
- * ones that change observable behaviour are repeated next to the API they
- * constrain.
+ * Numbers are two-track (ADR-0004): a parsed number keeps its source text in
+ * `v.lit` and encodes back verbatim; a program-written number is `num_kind` 1
+ * (int64) or 2 (double).
  */
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-/* The seven JSON kinds. `json_tag` answers -1 for a NULL pointer, so a missing
-   member is never confused with an explicit JSON null (tag 0). */
+/* The six JSON kinds. Numbers are one kind; `num_kind` tells the tracks
+   apart. `json_tag` answers -1 for an empty handle, so a missing member is
+   never confused with an explicit JSON null (tag 0). */
 pub enum JsonTag {
-    JSON_NULL = 0,
-    JSON_BOOL = 1,
-    JSON_INT = 2,
-    JSON_NUM = 3,
-    JSON_STR = 4,
-    JSON_OBJ = 5,
-    JSON_ARR = 6
+    JSON_TAG_NULL = 0,
+    JSON_TAG_BOOL = 1,
+    JSON_TAG_NUM = 2,
+    JSON_TAG_STR = 3,
+    JSON_TAG_OBJ = 4,
+    JSON_TAG_ARR = 5
 }
 
-/* Decode/encode error codes. They are frozen for J1; a later phase may add
-   codes but must not renumber these. */
+/* Negative codes: 0 is success, every failure is < 0. */
 pub enum JsonCode {
     JSON_OK = 0,
-    JSON_ERR_EOF = 1,
-    JSON_ERR_SYNTAX = 2,
-    JSON_ERR_TRAILING = 3,
-    JSON_ERR_STRING = 4,
-    JSON_ERR_ESCAPE = 5,
-    JSON_ERR_UNICODE = 6,
-    JSON_ERR_SURROGATE = 7,
-    JSON_ERR_NUMBER = 8,
-    JSON_ERR_DEPTH = 9,
-    JSON_ERR_MEMORY = 10
+    JSON_ERR_EOF = -1,
+    JSON_ERR_SYNTAX = -2,
+    JSON_ERR_TRAILING = -3,
+    JSON_ERR_STRING = -4,
+    JSON_ERR_ESCAPE = -5,
+    JSON_ERR_UNICODE = -6,
+    JSON_ERR_SURROGATE = -7,
+    JSON_ERR_NUMBER = -8,
+    JSON_ERR_DEPTH = -9,
+    JSON_ERR_MEMORY = -10,
+    JSON_ERR_TYPE = -11,
+    JSON_ERR_RANGE = -12,
+    JSON_ERR_CYCLE = -13
 }
 
-pub struct JsonError {
-    int code;
-    int offset;
-}
-
-/* The uniform element type of both containers. `p` is owned by the tree. */
+/* The uniform element type of both containers. `p == 0` is the empty handle:
+   "no such value", distinct from a present JSON null. */
 pub struct JsonRef {
-    struct JsonValue *p;
+    struct JsonNode *p;
 }
 
-/* Named on purpose: `union { ... } v;` is rejected by CT
+/* Named on purpose: `union { ... } v;` is a hard error in CT
    (`an anonymous record member cannot have a name`). */
-pub union JsonPayload {
+pub union JsonValue {
     int b;
     long long i;
-    double n;
-    char *s;
-    Map<char *, struct JsonRef *> *obj;
-    Vec<struct JsonRef *> *arr;
+    double d;
+    Str s;       /* string value, length-carrying */
+    Str lit;     /* source text of a parsed number */
+    struct JsonObj *obj;
+    struct JsonArr *arr;
 }
 
-pub struct JsonValue {
-    int tag;
-    union JsonPayload v;
+pub struct JsonNode {
+    int tag;       /* JsonTag */
+    int refs;      /* reference count, starts at 1 */
+    int num_kind;  /* 0 = source text, 1 = int64, 2 = double */
+    JsonValue v;
+}
+
+pub struct JsonObj {
+    int len;
+    int cap;
+    char **keys;      /* container-owned copies */
+    JsonRef *vals;
+} use Drop;
+
+pub struct JsonArr {
+    int len;
+    int cap;
+    JsonRef *items;
+} use Drop;
+
+/* ------------------------------------------------------------- lifetime */
+
+pub void json_retain(JsonRef v);
+pub void json_release(JsonRef v);
+pub void json_free(JsonRef v);
+
+/* Last error recorded by `json_decode` or `json_encode` on this thread; reset
+   to JSON_OK at the start of each call. */
+pub int json_last_error(void);
+
+/* The container drop order is fixed: release `[0, len)` elements, then free
+   the element/key arrays, then the container itself. Slots in `[len, cap)`
+   were never constructed and are not touched. */
+impl Drop for JsonObj {
+    void drop()
+    {
+        int i;
+        for (i = 0; i < self->len; i = i + 1) {
+            json_release(self->vals[i]);
+            free(self->keys[i]);
+        }
+        free(self->keys);
+        free(self->vals);
+        self->len = 0;
+        self->cap = 0;
+        self->keys = 0;
+        self->vals = 0;
+    }
+}
+
+impl Drop for JsonArr {
+    void drop()
+    {
+        int i;
+        for (i = 0; i < self->len; i = i + 1) json_release(self->items[i]);
+        free(self->items);
+        self->len = 0;
+        self->cap = 0;
+        self->items = 0;
+    }
 }
 
 /* ------------------------------------------------------------- decoding */
 
-/* Parse `len` bytes of `text`. On success the root is owned by the caller and
-   `err->code` is JSON_OK (offset = len). On failure 0 is returned, `err->code`
-   names the first failure and `err->offset` is the byte position of it.
-   `text` is not modified and must stay alive only for the duration of the call.
+/* Parse `len` bytes of `text`. On JSON_OK `out->p` is the root and the caller
+   owns exactly one reference; on failure a negative code is returned and
+   `out` is untouched. `text` is not modified. Nesting depth limit: 64. */
+pub int json_decode(char *text, int len, JsonRef *out);
 
-   Limits: nesting depth 64 (JSON_ERR_DEPTH); strings and keys are NUL
-   terminated `char *`, so an embedded U+0000 is rejected by the encoder and a
-   key containing one cannot be represented at all. Integer literals outside
-   the int64 range and literals with a fraction/exponent land in JSON_NUM
-   (double); see docs/j1-ct-limits.md. */
-pub JsonValue *json_decode(char *text, int len, JsonError *err);
-
-/* Serialise `v` into a fresh NUL terminated buffer owned by the caller
-   (`free` it). Output is compact, object keys keep insertion order, non-ASCII
-   bytes are written through unchanged, and floating point values use the
-   shortest text that round-trips through `strtod` in the C locale.
-   Returns 0 for a NULL tree or a non-finite double. */
-pub char *json_encode(JsonValue *v);
-
-/* The only release entry. `json_free(0)` is a no-op. */
-pub void json_free(JsonValue *v);
+/* Serialise into a fresh NUL-terminated buffer the caller frees. Objects keep
+   insertion order, parsed numbers keep their source text, shared subtrees are
+   written once per occurrence. Returns 0 on an empty handle or a cycle (the
+   cycle code is then visible through `json_last_error`). */
+pub char *json_encode(JsonRef root);
 
 /* ------------------------------------------------------------- access */
 
-/* Tag of `v`; -1 when `v` is NULL (a missing member, not a JSON null). */
-pub int json_tag(JsonValue *v);
-pub int json_is_null(JsonValue *v);
+pub int json_tag(JsonRef v);
+pub int json_is_null(JsonRef v);
 
-/* Type-checked readers. A tag mismatch answers the zero value (0 / 0.0 / NULL)
-   and never a value borrowed from another kind. `json_as_num` widens an
-   integer; nothing narrows a double to an integer. */
-pub int json_as_bool(JsonValue *v);
-pub long long json_as_int(JsonValue *v);
-pub double json_as_num(JsonValue *v);
-pub char *json_as_str(JsonValue *v);
+/* Explicit conversions; there is no implicit one. A tag mismatch answers
+   JSON_ERR_TYPE and leaves `out` untouched; an int64 conversion that does not
+   fit answers JSON_ERR_RANGE. */
+pub int json_as_bool(JsonRef v, int *out);
+pub int json_as_int(JsonRef v, long long *out);
+pub int json_as_double(JsonRef v, double *out);
 
-/* Borrowed handles to the underlying container; NULL on a tag mismatch. Do not
-   release them, and do not hold them across a mutation of the tree. */
-pub Map<char *, struct JsonRef *> *json_as_obj(JsonValue *v);
-pub Vec<struct JsonRef *> *json_as_arr(JsonValue *v);
+/* Borrowed pointer into the node's string; the byte count goes to `len` when
+   `len` is not 0. The buffer is not NUL-terminated as a contract and may
+   contain U+0000. */
+pub char *json_as_str(JsonRef v, int *len);
 
-/* 0 on a tag mismatch. */
-pub int json_obj_len(JsonValue *v);
-pub int json_arr_len(JsonValue *v);
+/* -1 on a tag mismatch or an empty handle. */
+pub int json_obj_len(JsonRef v);
+pub int json_arr_len(JsonRef v);
 
-/* Member lookup by exact key. 0 when `v` is not an object or the key is
-   absent; a present JSON null answers a non-NULL node with tag JSON_NULL.
-   The returned node is borrowed from the tree. */
-pub JsonValue *json_member(JsonValue *v, char *key);
+/* Borrowed member handle; empty when `v` is not an object or the key is
+   absent. A present JSON null answers a non-empty handle. */
+pub JsonRef json_member(JsonRef v, char *key);
 
-/* Element lookup. 0 when `v` is not an array or `i` is out of range. */
-pub JsonValue *json_at(JsonValue *v, int i);
+/* Borrowed element handle; empty when `v` is not an array or `i` is out of
+   range. */
+pub JsonRef json_at(JsonRef v, int i);
 
-/* The i-th key in insertion order, borrowed; 0 out of range or on a tag
-   mismatch. */
-pub char *json_obj_key_at(JsonValue *v, int i);
+/* Borrowed key at `i` in insertion order; 0 out of range. */
+pub char *json_obj_key_at(JsonRef v, int i);
 
 /* ------------------------------------------------------------- internals */
 
 #define J1_DEPTH_LIMIT 64
+#define J1_ENC_DEPTH_LIMIT 256
+
+static int j1_last_error = 0;
 
 struct J1Parser {
     char *src;
@@ -145,7 +189,6 @@ struct J1Parser {
     int pos;
     int depth;
     int err;
-    int off;
 }
 
 struct J1Buf {
@@ -155,9 +198,8 @@ struct J1Buf {
     int bad;
 }
 
-/* Allocation policy: like the built-in `Vec` header, a failed allocation
-   aborts (D31-21). That keeps every allocation site free of partial-failure
-   branches; syntax and limit failures are still reported through JsonError. */
+/* A failed allocation aborts, like the built-in `Vec` header: every node is
+   reachable, so there is no partial-failure branch to thread through. */
 static void *j1_alloc(size_t n)
 {
     void *p = malloc(n);
@@ -165,51 +207,154 @@ static void *j1_alloc(size_t n)
     return p;
 }
 
-static char *j1_strdup(char *s)
+static void j1_str_drop(Str *s)
 {
-    int n = (int)strlen(s);
-    char *d = j1_alloc((size_t)n + 1);
-    memcpy(d, s, (size_t)n + 1);
-    return d;
+    free(s->data);
+    s->data = 0;
+    s->len = -1;
 }
 
-static JsonValue *j1_node_new(int tag)
+static JsonRef j1_empty(void)
 {
-    JsonValue *v = j1_alloc(sizeof(struct JsonValue));
-    v->tag = tag;
-    v->v.i = 0;
-    return v;
-}
-
-static JsonRef *j1_ref_new(JsonValue *v)
-{
-    JsonRef *r = j1_alloc(sizeof(struct JsonRef));
-    r->p = v;
+    JsonRef r;
+    r.p = 0;
     return r;
 }
 
-static Map<char *, JsonRef *> *j1_obj_new(void)
+static JsonRef j1_node_make(int tag)
 {
-    Map<char *, JsonRef *> z = {};
-    Map<char *, JsonRef *> *m = j1_alloc(sizeof(z));
-    m->h = 0;
-    return m;
+    JsonNode *n = j1_alloc(sizeof(struct JsonNode));
+    JsonRef r;
+    memset(n, 0, sizeof(struct JsonNode));
+    n->tag = tag;
+    n->refs = 1;
+    n->num_kind = 0;
+    r.p = n;
+    return r;
 }
 
-static Vec<JsonRef *> *j1_arr_new(void)
+static void j1_node_destroy(JsonNode *n)
 {
-    Vec<JsonRef *> z = {};
-    Vec<JsonRef *> *a = j1_alloc(sizeof(z));
-    a->h = 0;
+    if (n == 0) return;
+    if (n->tag == JSON_TAG_STR) {
+        free(n->v.s.data);
+        n->v.s.data = 0;
+        n->v.s.len = -1;
+    } else if (n->tag == JSON_TAG_NUM) {
+        if (n->num_kind == 0) {
+            free(n->v.lit.data);
+            n->v.lit.data = 0;
+            n->v.lit.len = -1;
+        }
+    } else if (n->tag == JSON_TAG_OBJ) {
+        JsonObj *o = n->v.obj;
+        if (o != 0) delete o;
+    } else if (n->tag == JSON_TAG_ARR) {
+        JsonArr *a = n->v.arr;
+        if (a != 0) delete a;
+    }
+    free(n);
+}
+
+pub void json_retain(JsonRef v)
+{
+    if (v.p == 0) return;
+    v.p->refs = v.p->refs + 1;
+}
+
+pub void json_release(JsonRef v)
+{
+    if (v.p == 0) return;
+    v.p->refs = v.p->refs - 1;
+    if (v.p->refs > 0) return;
+    j1_node_destroy(v.p);
+}
+
+pub void json_free(JsonRef v)
+{
+    json_release(v);
+}
+
+pub int json_last_error(void)
+{
+    return j1_last_error;
+}
+
+static JsonObj *j1_obj_new(void)
+{
+    JsonObj *o = j1_alloc(sizeof(struct JsonObj));
+    o->len = 0;
+    o->cap = 0;
+    o->keys = 0;
+    o->vals = 0;
+    return o;
+}
+
+static JsonArr *j1_arr_new(void)
+{
+    JsonArr *a = j1_alloc(sizeof(struct JsonArr));
+    a->len = 0;
+    a->cap = 0;
+    a->items = 0;
     return a;
+}
+
+static int j1_obj_grow(JsonObj *o)
+{
+    int nc = o->cap == 0 ? 4 : o->cap * 2;
+    char **nk = realloc(o->keys, (size_t)nc * sizeof(char *));
+    JsonRef *nv;
+    if (nk == 0) return 0;
+    o->keys = nk;
+    nv = realloc(o->vals, (size_t)nc * sizeof(struct JsonRef));
+    if (nv == 0) return 0;
+    o->vals = nv;
+    o->cap = nc;
+    return 1;
+}
+
+/* Takes ownership of `key` and of one reference on `val`. A repeated key keeps
+ * the first position (insertion order) and replaces the value. */
+static int j1_obj_put(JsonObj *o, char *key, JsonRef val)
+{
+    int i;
+    for (i = 0; i < o->len; i = i + 1) {
+        if (strcmp(o->keys[i], key) == 0) {
+            json_release(o->vals[i]);
+            o->vals[i] = val;
+            free(key);
+            return 1;
+        }
+    }
+    if (o->len == o->cap && !j1_obj_grow(o)) return 0;
+    o->keys[o->len] = key;
+    o->vals[o->len] = val;
+    o->len = o->len + 1;
+    return 1;
+}
+
+static int j1_arr_grow(JsonArr *a)
+{
+    int nc = a->cap == 0 ? 4 : a->cap * 2;
+    JsonRef *nv = realloc(a->items, (size_t)nc * sizeof(struct JsonRef));
+    if (nv == 0) return 0;
+    a->items = nv;
+    a->cap = nc;
+    return 1;
+}
+
+/* Takes ownership of one reference on `val`. */
+static int j1_arr_push(JsonArr *a, JsonRef val)
+{
+    if (a->len == a->cap && !j1_arr_grow(a)) return 0;
+    a->items[a->len] = val;
+    a->len = a->len + 1;
+    return 1;
 }
 
 static void j1_fail(struct J1Parser *p, int code)
 {
-    if (p->err == 0) {
-        p->err = code;
-        p->off = p->pos;
-    }
+    if (p->err == 0) p->err = code;
 }
 
 static void j1_ws(struct J1Parser *p)
@@ -326,14 +471,9 @@ static int j1_escape(struct J1Parser *p, char *out, int *n)
     return 0;
 }
 
-/* Parse a quoted string. Answers a fresh NUL terminated buffer. The worst case
-   is one output byte per input byte, so the allocation is bounded by the rest
-   of the document. Raw bytes >= 0x80 are copied through: J1 does not validate
-   UTF-8 (see docs/j1-ct-limits.md).
-
-   `defer` is rejected inside a `.h.ct` unit (`defer is not allowed in a .h.ct
-   unit`), so the decode loop reports failure and the caller frees the buffer. */
-static int j1_string_into(struct J1Parser *p, char *out)
+/* Raw bytes >= 0x80 are copied through: UTF-8 is not validated. `defer` is
+   rejected inside a `.h.ct` unit, so the caller frees on failure. */
+static int j1_string_into(struct J1Parser *p, char *out, int *outn)
 {
     int n = 0;
     p->pos = p->pos + 1;
@@ -348,6 +488,7 @@ static int j1_string_into(struct J1Parser *p, char *out)
         if (c == '"') {
             p->pos = p->pos + 1;
             out[n] = 0;
+            *outn = n;
             return 1;
         }
         if (c == '\\') {
@@ -365,34 +506,28 @@ static int j1_string_into(struct J1Parser *p, char *out)
     }
 }
 
-static char *j1_string(struct J1Parser *p)
+static int j1_string(struct J1Parser *p, Str *out)
 {
-    char *out;
+    char *buf;
+    int n = 0;
+    Str s;
     if (p->pos >= p->len || p->src[p->pos] != '"') {
         j1_fail(p, JSON_ERR_SYNTAX);
         return 0;
     }
-    out = j1_alloc((size_t)(p->len - p->pos) + 1);
-    if (!j1_string_into(p, out)) {
-        free(out);
+    buf = j1_alloc((size_t)(p->len - p->pos) + 1);
+    if (!j1_string_into(p, buf, &n)) {
+        free(buf);
         return 0;
     }
-    return out;
-}
-
-/* The number token is already known to be valid; convert the integer part
-   exactly when it fits, otherwise fall back to `strtod` on a NUL terminated
-   copy of the token. The locale is the C one unless the host changed it. */
-static double j1_double_of(char *src, int start, int end)
-{
-    int n = end - start;
-    char *tmp = j1_alloc((size_t)n + 1);
-    double d;
-    memcpy(tmp, src + start, (size_t)n);
-    tmp[n] = 0;
-    d = strtod(tmp, 0);
-    free(tmp);
-    return d;
+    s = str_from_len(buf, n);
+    free(buf);
+    if (s.len < 0) {
+        j1_fail(p, JSON_ERR_MEMORY);
+        return 0;
+    }
+    *out = s;
+    return 1;
 }
 
 static int j1_digit(int c)
@@ -400,19 +535,15 @@ static int j1_digit(int c)
     return c >= '0' && c <= '9';
 }
 
-static JsonValue *j1_number(struct J1Parser *p)
+/* Every parsed number keeps its source text (`num_kind == 0`), so `1.0`,
+   `1e3` and values beyond int64 all encode back byte for byte. */
+static int j1_number(struct J1Parser *p, JsonRef *out)
 {
     int start = p->pos;
-    int neg = 0;
-    int is_int = 1;
-    int overflow = 0;
-    long long acc = 0;
-    JsonValue *v;
+    JsonRef r;
+    Str lit;
 
-    if (p->src[p->pos] == '-') {
-        neg = 1;
-        p->pos = p->pos + 1;
-    }
+    if (p->src[p->pos] == '-') p->pos = p->pos + 1;
     if (p->pos >= p->len || !j1_digit(p->src[p->pos])) {
         j1_fail(p, JSON_ERR_NUMBER);
         return 0;
@@ -424,14 +555,8 @@ static JsonValue *j1_number(struct J1Parser *p)
             return 0;
         }
     } else {
-        while (p->pos < p->len && j1_digit(p->src[p->pos])) {
-            int d = p->src[p->pos] - '0';
-            if (acc > (9223372036854775807 - d) / 10)
-                overflow = 1;
-            else
-                acc = acc * 10 + d;
+        while (p->pos < p->len && j1_digit(p->src[p->pos]))
             p->pos = p->pos + 1;
-        }
     }
     if (p->pos < p->len && p->src[p->pos] == '.') {
         p->pos = p->pos + 1;
@@ -441,7 +566,6 @@ static JsonValue *j1_number(struct J1Parser *p)
         }
         while (p->pos < p->len && j1_digit(p->src[p->pos]))
             p->pos = p->pos + 1;
-        is_int = 0;
     }
     if (p->pos < p->len && (p->src[p->pos] == 'e' || p->src[p->pos] == 'E')) {
         p->pos = p->pos + 1;
@@ -453,62 +577,32 @@ static JsonValue *j1_number(struct J1Parser *p)
         }
         while (p->pos < p->len && j1_digit(p->src[p->pos]))
             p->pos = p->pos + 1;
-        is_int = 0;
     }
 
-    if (is_int && !overflow) {
-        v = j1_node_new(JSON_INT);
-        v->v.i = neg ? -acc : acc;
-        return v;
-    }
-    {
-        double d = j1_double_of(p->src, start, p->pos);
-        if (d > 1.7976931348623157e308 || d < -1.7976931348623157e308) {
-            j1_fail(p, JSON_ERR_NUMBER);
-            return 0;
-        }
-        v = j1_node_new(JSON_NUM);
-        v->v.n = d;
-        return v;
-    }
-}
-
-/* Insert or overwrite in place (last wins, first position kept). The map does
-   not copy keys, so the first key is kept and a duplicate's fresh copy is
-   freed here. `val` is owned by the map on success; on failure the caller
-   still owns both `key` and `val`. */
-static int j1_obj_put(Map<char *, JsonRef *> *m, char *key, JsonValue *val)
-{
-    JsonRef **slot;
-    JsonRef *r;
-    slot = m->get(key);
-    r = j1_ref_new(val);
-    if (slot != 0) {
-        JsonRef *old = *slot;
-        if (old != 0) {
-            json_free(old->p);
-            free(old);
-        }
-        m->put(key, r);
-        free(key);
-        return 1;
-    }
-    if (!m->put(key, r)) {
-        free(r);
+    r = j1_node_make(JSON_TAG_NUM);
+    lit = str_from_len(p->src + start, p->pos - start);
+    if (lit.len < 0) {
+        j1_node_destroy(r.p);
+        j1_fail(p, JSON_ERR_MEMORY);
         return 0;
     }
+    r.p->num_kind = 0;
+    r.p->v.lit = lit;
+    *out = r;
     return 1;
 }
 
-static JsonValue *j1_value(struct J1Parser *p);
+static int j1_value(struct J1Parser *p, JsonRef *out);
 
-static int j1_object_fill(struct J1Parser *p, JsonValue *v)
+static int j1_object(struct J1Parser *p, JsonRef *out)
 {
-    Map<char *, JsonRef *> *m = j1_obj_new();
-    v->v.obj = m;
+    JsonRef r = j1_node_make(JSON_TAG_OBJ);
+    JsonObj *o = j1_obj_new();
+    r.p->v.obj = o;
     p->depth = p->depth + 1;
     if (p->depth > J1_DEPTH_LIMIT) {
         j1_fail(p, JSON_ERR_DEPTH);
+        j1_node_destroy(r.p);
         return 0;
     }
     p->pos = p->pos + 1;
@@ -516,38 +610,53 @@ static int j1_object_fill(struct J1Parser *p, JsonValue *v)
     if (p->pos < p->len && p->src[p->pos] == '}') {
         p->pos = p->pos + 1;
         p->depth = p->depth - 1;
+        *out = r;
         return 1;
     }
     while (1) {
-        char *key;
-        JsonValue *val;
+        Str key;
+        char *k;
+        JsonRef val;
         j1_ws(p);
         if (p->pos >= p->len) {
             j1_fail(p, JSON_ERR_EOF);
+            j1_node_destroy(r.p);
             return 0;
         }
         if (p->src[p->pos] != '"') {
             j1_fail(p, JSON_ERR_SYNTAX);
+            j1_node_destroy(r.p);
             return 0;
         }
-        key = j1_string(p);
-        if (key == 0) return 0;
+        if (!j1_string(p, &key)) {
+            j1_node_destroy(r.p);
+            return 0;
+        }
         j1_ws(p);
         if (p->pos >= p->len || p->src[p->pos] != ':') {
-            free(key);
+            key.release();
             j1_fail(p, JSON_ERR_SYNTAX);
+            j1_node_destroy(r.p);
             return 0;
         }
         p->pos = p->pos + 1;
-        val = j1_value(p);
-        if (val == 0) {
-            free(key);
+        k = str_c_str(key);
+        key.release();
+        if (k == 0) {
+            j1_fail(p, JSON_ERR_MEMORY);
+            j1_node_destroy(r.p);
             return 0;
         }
-        if (!j1_obj_put(m, key, val)) {
-            free(key);
-            json_free(val);
+        if (!j1_value(p, &val)) {
+            free(k);
+            j1_node_destroy(r.p);
+            return 0;
+        }
+        if (!j1_obj_put(o, k, val)) {
+            free(k);
+            json_release(val);
             j1_fail(p, JSON_ERR_MEMORY);
+            j1_node_destroy(r.p);
             return 0;
         }
         j1_ws(p);
@@ -558,30 +667,24 @@ static int j1_object_fill(struct J1Parser *p, JsonValue *v)
         if (p->pos < p->len && p->src[p->pos] == '}') {
             p->pos = p->pos + 1;
             p->depth = p->depth - 1;
+            *out = r;
             return 1;
         }
         j1_fail(p, JSON_ERR_SYNTAX);
+        j1_node_destroy(r.p);
         return 0;
     }
 }
 
-static JsonValue *j1_object(struct J1Parser *p)
+static int j1_array(struct J1Parser *p, JsonRef *out)
 {
-    JsonValue *v = j1_node_new(JSON_OBJ);
-    if (!j1_object_fill(p, v)) {
-        json_free(v);
-        return 0;
-    }
-    return v;
-}
-
-static int j1_array_fill(struct J1Parser *p, JsonValue *v)
-{
-    Vec<JsonRef *> *a = j1_arr_new();
-    v->v.arr = a;
+    JsonRef r = j1_node_make(JSON_TAG_ARR);
+    JsonArr *a = j1_arr_new();
+    r.p->v.arr = a;
     p->depth = p->depth + 1;
     if (p->depth > J1_DEPTH_LIMIT) {
         j1_fail(p, JSON_ERR_DEPTH);
+        j1_node_destroy(r.p);
         return 0;
     }
     p->pos = p->pos + 1;
@@ -589,17 +692,19 @@ static int j1_array_fill(struct J1Parser *p, JsonValue *v)
     if (p->pos < p->len && p->src[p->pos] == ']') {
         p->pos = p->pos + 1;
         p->depth = p->depth - 1;
+        *out = r;
         return 1;
     }
     while (1) {
-        JsonValue *val = j1_value(p);
-        JsonRef *r;
-        if (val == 0) return 0;
-        r = j1_ref_new(val);
-        if (!a->push(r)) {
-            free(r);
-            json_free(val);
+        JsonRef val;
+        if (!j1_value(p, &val)) {
+            j1_node_destroy(r.p);
+            return 0;
+        }
+        if (!j1_arr_push(a, val)) {
+            json_release(val);
             j1_fail(p, JSON_ERR_MEMORY);
+            j1_node_destroy(r.p);
             return 0;
         }
         j1_ws(p);
@@ -610,74 +715,29 @@ static int j1_array_fill(struct J1Parser *p, JsonValue *v)
         if (p->pos < p->len && p->src[p->pos] == ']') {
             p->pos = p->pos + 1;
             p->depth = p->depth - 1;
+            *out = r;
             return 1;
         }
         j1_fail(p, JSON_ERR_SYNTAX);
+        j1_node_destroy(r.p);
         return 0;
     }
 }
 
-static JsonValue *j1_array(struct J1Parser *p)
-{
-    JsonValue *v = j1_node_new(JSON_ARR);
-    if (!j1_array_fill(p, v)) {
-        json_free(v);
-        return 0;
-    }
-    return v;
-}
-
-static JsonValue *j1_lit_true(struct J1Parser *p)
+static int j1_lit_word(struct J1Parser *p, char *word, int n)
 {
     int i;
-    char *word = "true";
-    for (i = 0; i < 4; i = i + 1) {
+    for (i = 0; i < n; i = i + 1) {
         if (p->pos + i >= p->len || p->src[p->pos + i] != word[i]) {
             j1_fail(p, JSON_ERR_SYNTAX);
             return 0;
         }
     }
-    p->pos = p->pos + 4;
-    {
-        JsonValue *v = j1_node_new(JSON_BOOL);
-        v->v.b = 1;
-        return v;
-    }
+    p->pos = p->pos + n;
+    return 1;
 }
 
-static JsonValue *j1_lit_false(struct J1Parser *p)
-{
-    int i;
-    char *word = "false";
-    for (i = 0; i < 5; i = i + 1) {
-        if (p->pos + i >= p->len || p->src[p->pos + i] != word[i]) {
-            j1_fail(p, JSON_ERR_SYNTAX);
-            return 0;
-        }
-    }
-    p->pos = p->pos + 5;
-    {
-        JsonValue *v = j1_node_new(JSON_BOOL);
-        v->v.b = 0;
-        return v;
-    }
-}
-
-static JsonValue *j1_lit_null(struct J1Parser *p)
-{
-    int i;
-    char *word = "null";
-    for (i = 0; i < 4; i = i + 1) {
-        if (p->pos + i >= p->len || p->src[p->pos + i] != word[i]) {
-            j1_fail(p, JSON_ERR_SYNTAX);
-            return 0;
-        }
-    }
-    p->pos = p->pos + 4;
-    return j1_node_new(JSON_NULL);
-}
-
-static JsonValue *j1_value(struct J1Parser *p)
+static int j1_value(struct J1Parser *p, JsonRef *out)
 {
     char c;
     j1_ws(p);
@@ -686,67 +746,70 @@ static JsonValue *j1_value(struct J1Parser *p)
         return 0;
     }
     c = p->src[p->pos];
-    if (c == '{') return j1_object(p);
-    if (c == '[') return j1_array(p);
+    if (c == '{') return j1_object(p, out);
+    if (c == '[') return j1_array(p, out);
     if (c == '"') {
-        char *s = j1_string(p);
-        JsonValue *v;
-        if (s == 0) return 0;
-        v = j1_node_new(JSON_STR);
-        v->v.s = s;
-        return v;
+        Str s;
+        JsonRef r;
+        if (!j1_string(p, &s)) return 0;
+        r = j1_node_make(JSON_TAG_STR);
+        r.p->v.s = s;
+        *out = r;
+        return 1;
     }
-    if (c == 't') return j1_lit_true(p);
-    if (c == 'f') return j1_lit_false(p);
-    if (c == 'n') return j1_lit_null(p);
-    if (c == '-' || j1_digit(c)) return j1_number(p);
+    if (c == 't' || c == 'f') {
+        JsonRef r;
+        int b = c == 't';
+        if (b) {
+            if (!j1_lit_word(p, "true", 4)) return 0;
+        } else {
+            if (!j1_lit_word(p, "false", 5)) return 0;
+        }
+        r = j1_node_make(JSON_TAG_BOOL);
+        r.p->v.b = b;
+        *out = r;
+        return 1;
+    }
+    if (c == 'n') {
+        if (!j1_lit_word(p, "null", 4)) return 0;
+        *out = j1_node_make(JSON_TAG_NULL);
+        return 1;
+    }
+    if (c == '-' || j1_digit(c)) return j1_number(p, out);
     j1_fail(p, JSON_ERR_SYNTAX);
     return 0;
 }
 
-pub JsonValue *json_decode(char *text, int len, JsonError *err)
+pub int json_decode(char *text, int len, JsonRef *out)
 {
     struct J1Parser p;
-    JsonValue *root = 0;
+    JsonRef root = j1_empty();
+    j1_last_error = JSON_OK;
+    if (out == 0) {
+        j1_last_error = JSON_ERR_TYPE;
+        return JSON_ERR_TYPE;
+    }
+    if (text == 0 || len <= 0) {
+        j1_last_error = JSON_ERR_EOF;
+        return JSON_ERR_EOF;
+    }
     p.src = text;
     p.len = len;
     p.pos = 0;
     p.depth = 0;
     p.err = 0;
-    p.off = 0;
-    if (err != 0) {
-        err->code = JSON_OK;
-        err->offset = 0;
-    }
-    if (text == 0 || len <= 0) {
-        if (err != 0) {
-            err->code = JSON_ERR_EOF;
-            err->offset = 0;
-        }
-        return 0;
-    }
-    root = j1_value(&p);
-    if (root == 0) {
-        if (err != 0) {
-            err->code = p.err == 0 ? JSON_ERR_SYNTAX : p.err;
-            err->offset = p.off;
-        }
-        return 0;
+    if (!j1_value(&p, &root)) {
+        j1_last_error = p.err == 0 ? JSON_ERR_SYNTAX : p.err;
+        return j1_last_error;
     }
     j1_ws(&p);
     if (p.pos != p.len) {
-        if (err != 0) {
-            err->code = JSON_ERR_TRAILING;
-            err->offset = p.pos;
-        }
-        json_free(root);
-        return 0;
+        j1_node_destroy(root.p);
+        j1_last_error = JSON_ERR_TRAILING;
+        return JSON_ERR_TRAILING;
     }
-    if (err != 0) {
-        err->code = JSON_OK;
-        err->offset = p.len;
-    }
-    return root;
+    out->p = root.p;
+    return JSON_OK;
 }
 
 /* ------------------------------------------------------------- encoding */
@@ -769,13 +832,15 @@ static void j1_putc(struct J1Buf *b, int c)
     b->len = b->len + 1;
 }
 
+static void j1_putn(struct J1Buf *b, char *s, int n)
+{
+    int i;
+    for (i = 0; i < n; i = i + 1) j1_putc(b, s[i]);
+}
+
 static void j1_puts(struct J1Buf *b, char *s)
 {
-    int i = 0;
-    while (s[i] != 0) {
-        j1_putc(b, s[i]);
-        i = i + 1;
-    }
+    j1_putn(b, s, (int)strlen(s));
 }
 
 static void j1_put_hex4(struct J1Buf *b, int v)
@@ -787,11 +852,13 @@ static void j1_put_hex4(struct J1Buf *b, int v)
     j1_putc(b, digits[v & 0xF]);
 }
 
-static void j1_enc_string(struct J1Buf *b, char *s)
+/* Length-driven on purpose: a string value may contain U+0000, which is
+   written as `\u0000` instead of truncating the output. */
+static void j1_enc_bytes(struct J1Buf *b, char *s, int n)
 {
-    int i = 0;
+    int i;
     j1_putc(b, '"');
-    while (s[i] != 0) {
+    for (i = 0; i < n; i = i + 1) {
         int c = s[i];
         if (c < 0) c = c + 256;
         if (c == '"') {
@@ -814,7 +881,6 @@ static void j1_enc_string(struct J1Buf *b, char *s)
         } else {
             j1_putc(b, c);
         }
-        i = i + 1;
     }
     j1_putc(b, '"');
 }
@@ -824,7 +890,7 @@ static void j1_enc_double(struct J1Buf *b, double d)
     char tmp[64];
     int k;
     if (d > 1.7976931348623157e308 || d < -1.7976931348623157e308) {
-        b->bad = 1;
+        b->bad = JSON_ERR_RANGE;
         return;
     }
     for (k = 1; k <= 17; k = k + 1) {
@@ -834,93 +900,85 @@ static void j1_enc_double(struct J1Buf *b, double d)
     j1_puts(b, tmp);
 }
 
-static void j1_enc(struct J1Buf *b, JsonValue *v);
+static void j1_enc(struct J1Buf *b, JsonRef v, int depth);
 
-static void j1_enc_obj(struct J1Buf *b, JsonValue *v)
+static void j1_enc_obj(struct J1Buf *b, JsonObj *o, int depth)
 {
-    Map<char *, JsonRef *> *m = v->v.obj;
-    Map<char *, JsonRef *> h;
     int i;
-    if (m == 0) {
-        j1_puts(b, "{}");
-        return;
-    }
-    h = *m;
     j1_putc(b, '{');
-    for (i = 0; i < h.len(); i = i + 1) {
-        MapEntry<char *, JsonRef *> e = h.entry(i);
+    for (i = 0; i < o->len; i = i + 1) {
         if (i > 0) j1_putc(b, ',');
-        j1_enc_string(b, e.key);
+        j1_enc_bytes(b, o->keys[i], (int)strlen(o->keys[i]));
         j1_putc(b, ':');
-        if (e.value == 0) {
-            j1_puts(b, "null");
-        } else {
-            j1_enc(b, e.value->p);
-        }
+        j1_enc(b, o->vals[i], depth + 1);
+        if (b->bad != 0) return;
     }
     j1_putc(b, '}');
 }
 
-static void j1_enc_arr(struct J1Buf *b, JsonValue *v)
+static void j1_enc_arr(struct J1Buf *b, JsonArr *a, int depth)
 {
-    Vec<JsonRef *> *a = v->v.arr;
-    Vec<JsonRef *> h;
     int i;
-    if (a == 0) {
-        j1_puts(b, "[]");
-        return;
-    }
-    h = *a;
     j1_putc(b, '[');
-    for (i = 0; i < h.len(); i = i + 1) {
-        JsonRef *r = h.get(i);
+    for (i = 0; i < a->len; i = i + 1) {
         if (i > 0) j1_putc(b, ',');
-        if (r == 0) {
-            j1_puts(b, "null");
-        } else {
-            j1_enc(b, r->p);
-        }
+        j1_enc(b, a->items[i], depth + 1);
+        if (b->bad != 0) return;
     }
     j1_putc(b, ']');
 }
 
-static void j1_enc(struct J1Buf *b, JsonValue *v)
+static void j1_enc(struct J1Buf *b, JsonRef v, int depth)
 {
-    if (v == 0) {
-        b->bad = 1;
+    if (b->bad != 0) return;
+    if (v.p == 0) {
+        b->bad = JSON_ERR_TYPE;
         return;
     }
-    if (v->tag == JSON_NULL) {
+    if (depth > J1_ENC_DEPTH_LIMIT) {
+        b->bad = JSON_ERR_CYCLE;
+        return;
+    }
+    if (v.p->tag == JSON_TAG_NULL) {
         j1_puts(b, "null");
-    } else if (v->tag == JSON_BOOL) {
-        j1_puts(b, v->v.b ? "true" : "false");
-    } else if (v->tag == JSON_INT) {
-        char tmp[32];
-        snprintf(tmp, sizeof(tmp), "%lld", v->v.i);
-        j1_puts(b, tmp);
-    } else if (v->tag == JSON_NUM) {
-        j1_enc_double(b, v->v.n);
-    } else if (v->tag == JSON_STR) {
-        j1_enc_string(b, v->v.s);
-    } else if (v->tag == JSON_OBJ) {
-        j1_enc_obj(b, v);
-    } else if (v->tag == JSON_ARR) {
-        j1_enc_arr(b, v);
+    } else if (v.p->tag == JSON_TAG_BOOL) {
+        j1_puts(b, v.p->v.b ? "true" : "false");
+    } else if (v.p->tag == JSON_TAG_NUM) {
+        if (v.p->num_kind == 0) {
+            j1_putn(b, v.p->v.lit.data, v.p->v.lit.len);
+        } else if (v.p->num_kind == 1) {
+            char tmp[32];
+            snprintf(tmp, sizeof(tmp), "%lld", v.p->v.i);
+            j1_puts(b, tmp);
+        } else {
+            j1_enc_double(b, v.p->v.d);
+        }
+    } else if (v.p->tag == JSON_TAG_STR) {
+        j1_enc_bytes(b, v.p->v.s.data, v.p->v.s.len);
+    } else if (v.p->tag == JSON_TAG_OBJ) {
+        j1_enc_obj(b, v.p->v.obj, depth);
+    } else if (v.p->tag == JSON_TAG_ARR) {
+        j1_enc_arr(b, v.p->v.arr, depth);
     } else {
-        b->bad = 1;
+        b->bad = JSON_ERR_TYPE;
     }
 }
 
-pub char *json_encode(JsonValue *v)
+pub char *json_encode(JsonRef root)
 {
     struct J1Buf b;
     b.p = 0;
     b.len = 0;
     b.cap = 0;
     b.bad = 0;
-    if (v == 0) return 0;
-    j1_enc(&b, v);
-    if (b.bad) {
+    j1_last_error = JSON_OK;
+    if (root.p == 0) {
+        j1_last_error = JSON_ERR_TYPE;
+        return 0;
+    }
+    j1_enc(&b, root, 0);
+    if (b.bad != 0) {
+        j1_last_error = b.bad;
         free(b.p);
         return 0;
     }
@@ -929,147 +987,135 @@ pub char *json_encode(JsonValue *v)
     return b.p;
 }
 
-/* ------------------------------------------------------------- release */
+/* ------------------------------------------------------------- conversions */
 
-pub void json_free(JsonValue *v)
+static int j1_lit_to_int(Str s, long long *out)
 {
-    if (v == 0) return;
-    if (v->tag == JSON_STR) {
-        free(v->v.s);
-    } else if (v->tag == JSON_OBJ) {
-        Map<char *, JsonRef *> *m = v->v.obj;
-        if (m != 0) {
-            Map<char *, JsonRef *> h = *m;
-            int i;
-            for (i = 0; i < h.len(); i = i + 1) {
-                MapEntry<char *, JsonRef *> e = h.entry(i);
-                free(e.key);
-                if (e.value != 0) {
-                    json_free(e.value->p);
-                    free(e.value);
-                }
-            }
-            h.release();
-            free(m);
-        }
-    } else if (v->tag == JSON_ARR) {
-        Vec<JsonRef *> *a = v->v.arr;
-        if (a != 0) {
-            Vec<JsonRef *> h = *a;
-            int i;
-            for (i = 0; i < h.len(); i = i + 1) {
-                JsonRef *r = h.get(i);
-                if (r != 0) {
-                    json_free(r->p);
-                    free(r);
-                }
-            }
-            h.release();
-            free(a);
-        }
+    int i = 0;
+    int neg = 0;
+    unsigned long long acc = 0;
+    unsigned long long limit;
+    if (s.len <= 0) return JSON_ERR_TYPE;
+    if (s.data[0] == '-') {
+        neg = 1;
+        i = 1;
     }
-    free(v);
+    if (i >= s.len) return JSON_ERR_TYPE;
+    limit = neg ? 9223372036854775808ULL : 9223372036854775807ULL;
+    while (i < s.len) {
+        int c = s.data[i];
+        int d;
+        if (c < '0' || c > '9') return JSON_ERR_TYPE;
+        d = c - '0';
+        if (acc > (limit - (unsigned long long)d) / 10ULL) return JSON_ERR_RANGE;
+        acc = acc * 10ULL + (unsigned long long)d;
+        i = i + 1;
+    }
+    *out = neg ? (long long)(0ULL - acc) : (long long)acc;
+    return JSON_OK;
 }
 
-/* ------------------------------------------------------------- access */
-
-pub int json_tag(JsonValue *v)
+pub int json_tag(JsonRef v)
 {
-    if (v == 0) return -1;
-    return v->tag;
+    if (v.p == 0) return -1;
+    return v.p->tag;
 }
 
-pub int json_is_null(JsonValue *v)
+pub int json_is_null(JsonRef v)
 {
-    return v != 0 && v->tag == JSON_NULL;
+    return v.p != 0 && v.p->tag == JSON_TAG_NULL;
 }
 
-pub int json_as_bool(JsonValue *v)
+pub int json_as_bool(JsonRef v, int *out)
 {
-    if (v == 0 || v->tag != JSON_BOOL) return 0;
-    return v->v.b;
+    if (v.p == 0 || out == 0 || v.p->tag != JSON_TAG_BOOL) return JSON_ERR_TYPE;
+    *out = v.p->v.b ? 1 : 0;
+    return JSON_OK;
 }
 
-pub long long json_as_int(JsonValue *v)
+pub int json_as_int(JsonRef v, long long *out)
 {
-    if (v == 0 || v->tag != JSON_INT) return 0;
-    return v->v.i;
+    if (v.p == 0 || out == 0) return JSON_ERR_TYPE;
+    if (v.p->tag == JSON_TAG_BOOL) {
+        *out = v.p->v.b ? 1 : 0;
+        return JSON_OK;
+    }
+    if (v.p->tag != JSON_TAG_NUM) return JSON_ERR_TYPE;
+    if (v.p->num_kind == 1) {
+        *out = v.p->v.i;
+        return JSON_OK;
+    }
+    if (v.p->num_kind == 2) return JSON_ERR_TYPE;
+    return j1_lit_to_int(v.p->v.lit, out);
 }
 
-pub double json_as_num(JsonValue *v)
+pub int json_as_double(JsonRef v, double *out)
 {
-    if (v == 0) return 0.0;
-    if (v->tag == JSON_INT) return (double)v->v.i;
-    if (v->tag == JSON_NUM) return v->v.n;
-    return 0.0;
+    if (v.p == 0 || out == 0 || v.p->tag != JSON_TAG_NUM) return JSON_ERR_TYPE;
+    if (v.p->num_kind == 1) {
+        *out = (double)v.p->v.i;
+        return JSON_OK;
+    }
+    if (v.p->num_kind == 2) {
+        *out = v.p->v.d;
+        return JSON_OK;
+    }
+    {
+        char *tmp = str_c_str(v.p->v.lit);
+        double d;
+        if (tmp == 0) return JSON_ERR_MEMORY;
+        d = strtod(tmp, 0);
+        free(tmp);
+        *out = d;
+        return JSON_OK;
+    }
 }
 
-pub char *json_as_str(JsonValue *v)
+pub char *json_as_str(JsonRef v, int *len)
 {
-    if (v == 0 || v->tag != JSON_STR) return 0;
-    return v->v.s;
+    if (v.p == 0 || v.p->tag != JSON_TAG_STR) return 0;
+    if (len != 0) *len = v.p->v.s.len;
+    return v.p->v.s.data;
 }
 
-pub Map<char *, JsonRef *> *json_as_obj(JsonValue *v)
+pub int json_obj_len(JsonRef v)
 {
-    if (v == 0 || v->tag != JSON_OBJ) return 0;
-    return v->v.obj;
+    if (v.p == 0 || v.p->tag != JSON_TAG_OBJ || v.p->v.obj == 0) return -1;
+    return v.p->v.obj->len;
 }
 
-pub Vec<JsonRef *> *json_as_arr(JsonValue *v)
+pub int json_arr_len(JsonRef v)
 {
-    if (v == 0 || v->tag != JSON_ARR) return 0;
-    return v->v.arr;
+    if (v.p == 0 || v.p->tag != JSON_TAG_ARR || v.p->v.arr == 0) return -1;
+    return v.p->v.arr->len;
 }
 
-pub int json_obj_len(JsonValue *v)
+pub JsonRef json_member(JsonRef v, char *key)
 {
-    Map<char *, JsonRef *> *m;
-    if (v == 0 || v->tag != JSON_OBJ) return 0;
-    m = v->v.obj;
-    if (m == 0) return 0;
-    return m->len();
+    JsonObj *o;
+    int i;
+    if (v.p == 0 || v.p->tag != JSON_TAG_OBJ || key == 0) return j1_empty();
+    o = v.p->v.obj;
+    if (o == 0) return j1_empty();
+    for (i = 0; i < o->len; i = i + 1)
+        if (strcmp(o->keys[i], key) == 0) return o->vals[i];
+    return j1_empty();
 }
 
-pub int json_arr_len(JsonValue *v)
+pub JsonRef json_at(JsonRef v, int i)
 {
-    Vec<JsonRef *> *a;
-    if (v == 0 || v->tag != JSON_ARR) return 0;
-    a = v->v.arr;
-    if (a == 0) return 0;
-    return a->len();
+    JsonArr *a;
+    if (v.p == 0 || v.p->tag != JSON_TAG_ARR || i < 0) return j1_empty();
+    a = v.p->v.arr;
+    if (a == 0 || i >= a->len) return j1_empty();
+    return a->items[i];
 }
 
-pub JsonValue *json_member(JsonValue *v, char *key)
+pub char *json_obj_key_at(JsonRef v, int i)
 {
-    Map<char *, JsonRef *> *m;
-    JsonRef **slot;
-    if (v == 0 || v->tag != JSON_OBJ || key == 0) return 0;
-    m = v->v.obj;
-    if (m == 0) return 0;
-    slot = m->get(key);
-    if (slot == 0 || *slot == 0) return 0;
-    return (*slot)->p;
-}
-
-pub JsonValue *json_at(JsonValue *v, int i)
-{
-    Vec<JsonRef *> *a;
-    JsonRef *r;
-    if (v == 0 || v->tag != JSON_ARR || i < 0) return 0;
-    a = v->v.arr;
-    if (a == 0 || i >= a->len()) return 0;
-    r = a->get(i);
-    return r == 0 ? 0 : r->p;
-}
-
-pub char *json_obj_key_at(JsonValue *v, int i)
-{
-    Map<char *, JsonRef *> *m;
-    MapEntry<char *, JsonRef *> e;
-    if (v == 0 || v->tag != JSON_OBJ || i < 0) return 0;
-    m = v->v.obj;
-    if (m == 0 || i >= m->len()) return 0;
-    e = m->entry(i);
-    return e.key;
+    JsonObj *o;
+    if (v.p == 0 || v.p->tag != JSON_TAG_OBJ || i < 0) return 0;
+    o = v.p->v.obj;
+    if (o == 0 || i >= o->len) return 0;
+    return o->keys[i];
 }

@@ -104,7 +104,7 @@ static void lifecycle_contract(struct Stats *st)
     JsonRef child;
     JsonRef nested;
     int rc;
-    int x = 0;
+    long long x = 0;
 
     rc = json_decode("{\"a\":{\"x\":7}}", 13, &root);
     check(st, rc == JSON_OK, "lifecycle fixture decodes");
