@@ -2,7 +2,7 @@
 
 > English · [中文](#中文)
 
-> **Status (2026-11-15):** the decided scope is **read + write** over a tree whose
+> **Status (2026-11-15, 0.1.1):** the decided scope is **read + write** over a tree whose
 > subobjects may be shared, with reference-counted lifetime (`json_retain` /
 > `json_release` public). Numbers are dual-track: parsed literals round-trip verbatim,
 > written values are int64 or double. Cycles may exist in memory and are rejected at
@@ -12,10 +12,27 @@
 > [ADR-0006](docs/adr/0006-public-refcount.md). Access uses single-level string subscript
 > (`v["server"]`, [ADR-0007](docs/adr/0007-js-style-access.md)); numeric index uses
 > `get_idx(i)` and `v[0]` is unsupported in 0.1.0. Keys are `Str` (deep-copied on insert);
-> containers release their elements. The tree model and the write surface are not
-> implemented yet. The zero-allocation read-only view described below is the current
-> 0.1.0 implementation and is superseded; this README documents what exists, not the
-> decided target.
+> containers release their elements. The tree model and the write surface now live in
+> [`src/json.h.ct`](src/json.h.ct) (0.1.1 = usability patch: the package installs and
+> imports; no new features). Everything below about the zero-allocation view describes
+> the superseded 0.1.0 file; this README documents what exists, not the decided target.
+
+## As a package (0.1.1)
+
+ct-json is an external package, not a CT built-in. Build path is the L2 `ct` tool
+(`ctc`, the L0 compiler, cannot parse `Str` fields).
+
+```sh
+# in the consuming project
+ct get /path/to/ct-json      # writes vendor/json/ and ct.lock
+ct install                   # emits: ct build -I vendor/json <unit>.ct -o build
+```
+
+```ct
+import json::src::json;      // `namespace = json` strips the first segment
+```
+
+The red→green fixture for this is [`test/pkg/consumer.ct`](test/pkg/consumer.ct).
 
 A single CT file that validates JSON, exposes a read-only view over the caller's
 text, and serializes values back out. It allocates nothing, owns nothing, and
@@ -134,7 +151,7 @@ arithmetic, or pretty printing.
 
 ## 中文
 
-> **状态（2026-11-15）：** 已决定的公开范围是**读 + 写**，数据模型为树、子对象可共享，
+> **状态（2026-11-15，0.1.1）：** 已决定的公开范围是**读 + 写**，数据模型为树、子对象可共享，
 > 生命周期用引用计数管理（`json_retain` / `json_release` 公开）。数字双轨：解析来的
 > 字面量原样回吐，程序写入的值分 int64 / double。内存里允许有环，encode 期拒绝。
 > 见 [ADR-0001](docs/adr/0001-tree-data-model.md)、[ADR-0002](docs/adr/0002-mutable-scope.md)、
@@ -142,7 +159,8 @@ arithmetic, or pretty printing.
 > [ADR-0005](docs/adr/0005-cycle-handling.md)、[ADR-0006](docs/adr/0006-public-refcount.md)。
 > 访问用单层字符串下标（`v["server"]`，[ADR-0007](docs/adr/0007-js-style-access.md)）；
 > 数字下标用 `get_idx(i)`，0.1.0 不支持 `v[0]`。键为 `Str`，插入时深拷贝；容器负责释放
-> 元素。树模型与写入面均未实现。下文的零分配只读视图是 0.1.0 现有实现，已被取代；
+> 元素。树模型与写入面已实现于 [`src/json.h.ct`](src/json.h.ct)（0.1.1 为可用性补丁：
+> 包可安装、可 import，不加新特性）。下文的零分配只读视图是 0.1.0 旧文件，已被取代；
 > 本文只描述「已有」，不描述「已决定」。
 
 一个 CT 文件：校验 JSON、在调用方文本上暴露只读视图、再把值序列化回去。全程

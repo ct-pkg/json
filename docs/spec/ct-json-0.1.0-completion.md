@@ -55,3 +55,54 @@ $ /tmp/jsongate | diff - json.expected.out
 | 7 | 补负例红证：非 `pub` 下标、容器 Drop 顺序、`cap > len` 不越界释放 | G5 要求每条断言至少一个曾变红的负例 |
 | 8 | `JsonObj.index` 用 `Map<Str,int>`：v0.53.0 的 `Map` 实为插入序线性查找且每键两份副本；键多时改哈希或去掉冗余副本 | 规范 §2.3 注释 |
 | 9 | 规范文档 347 行，超过 G4 的 300 行上限，需按 8.4 拆分（门禁建立前先登记） | AGENTS.md G4 `g4-size` |
+| 10 | 包根迁移：现用 `namespace = json` + `import json::src::json` 过渡；等共享库机制/包根约定落地再改 | 0.1.1 验收记录 §五 |
+
+## 五、0.1.1 验收记录（可用性补丁，CT v0.53.0）
+
+**本版收的只有一条**：让 ct-json 能被 `ct get` + `ct install` 正常消费。实现与公开 API 未改，未加任何新特性；依赖 CT 语言能力的条目全部留在 §四。
+
+### 5.1 错误定性：`ctc -I src src/json.h.ct` 的 `expected a field name`
+
+结论：**不是包自身写法/类型问题，也不是 `-I` / namespace / 单元位置问题；是 `ctc`（L0）不支持 `Str` 字段**。同一条代码用 L2 `ct build` 可编。
+
+| 复现方式 | 命令 | 结果 |
+| --- | --- | --- |
+| ctc 直编（报告里的方式） | `ctc src/json.h.ct -I src` | `src/json.h.ct:84:8: error: expected a field name`；第 84 行是 `Map<Str, int> *index;` |
+| 包内既有构建方式（L2） | `ct build src/json.h.ct -I src` | 编译通过（仅链接失败：`_main` 未定义，属预期） |
+| 作为被 import 的包单元（L2） | `ct install` 后 `ct build -I vendor/json main.ct`，`main.ct` 内 `import json::src::json;` | 编译并运行成功（`consumer fails=0`，exit 0） |
+| 最小探针 | `ctc` 编 `struct X { Map<char *, int> *m; }` / `struct Y { Str *s; }` | 前两者过；把字段换成 `Map<Str, int> *` 即报同一条错 |
+
+即触发条件是「`ctc` 遇到 `Str` 作泛型实参/字段」，与 `Map<Str,int>` 在 `src/json.h.ct` 的写法无关。构建路径口径已写进 `ct.pkg` 注释：**只支持 L2 `ct`，`ctc` 不是受支持路径**。
+
+### 5.2 消费失败的真正原因与修复
+
+| 现状 | 命令 | 原始输出 |
+| --- | --- | --- |
+| 0.1.0 无 `namespace` 键，import 写成 `json::src::json` | `ct build -I vendor/json main.ct` | `ctc: cannot resolve import 'json/src/json'`（exit 1） |
+| 同上，import 写成 `json::json` | 同上 | `ctc: cannot resolve import 'json/json'`（exit 1） |
+| 修复：`ct.pkg` 加 `namespace = json` | 同上 | exit 0；程序输出 `consumer fails=0` |
+
+原因：包根即单元根，单元在 `src/` 下，而 import 首段会被 `namespace` 剥掉，所以消费路径必须是 `json::src::json`。
+
+### 5.3 验收证据
+
+```console
+$ ct get /path/to/ct-json        # 在消费方目录；消费方自身需先有 ct.pkg
+vendored 1 package(s)
+$ ct install                     # 消费方无 ct.pkg 时报 ctc: cannot open './ct.pkg'
+ct build -I vendor/json <unit>.ct -o build      # exit 0
+$ ct build -I vendor/json main.ct
+（0 error，exit 0）
+$ ./main
+consumer fails=0                                  # exit 0
+$ CT_STD_DIR=... ct build test/j1_roundtrip.ct -I src -o /tmp/ctjson_test && /tmp/ctjson_test
+124 ok / 0 not ok
+all checks passed                                 # exit 0
+$ # 既存 snippet 与 golden 门禁
+docs/snippets/{read_str,write_str,chain,numeric_index,cross_unit}.ct  build/run 全部 rc=0
+ct build json.ct -o /tmp/jsongate && /tmp/jsongate | diff - json.expected.out   # exit 0
+```
+
+红→绿夹具：`test/pkg/consumer.ct`，覆盖 9 种「装完必须可用」的形态（单层读、覆盖写、新增键、两级链读、`get_idx`、`has(Str)`、对象/数组迭代、编码成字符串、共享引用）。修复前该夹具因 import 解析失败而红（`ctc: cannot resolve import 'json/src/json'`，exit 1），修复后绿（`consumer fails=0`，exit 0）。
+
+版本位：`ct.pkg` 的 `version = 0.1.1`（patch 位），`requires = ct >= 0.53.0` 不变。

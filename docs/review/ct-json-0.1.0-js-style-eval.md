@@ -1,6 +1,7 @@
 # ct-json「JS 风格」使用形态评估
 
 > 范围：**只评估，不改实现、不改现有 API、不改既有规范**。
+> 定位：ct-json 是**外部包**，不是 CT 内部机制；JSON 文档 = `Vec` / `Map` 组合，CT 没有内置 JSON 类型。本文所有「缺什么」都按容器能力口径写（§五）。
 > 基线：CT `v0.53.0`，ct-json 0.1.0 当前公开面（`JsonRef` 为 tagged 句柄）。
 > 样例：`docs/snippets/js_style/`，每条都是真跑出来的；失败样例保留原始报错，未改写成语义不同的替代写法。
 
@@ -8,7 +9,7 @@
 
 1. 今天能用的只有：单层 `doc["k"]` 读写、两级链**读**（声明初始化/赋值右值）、`get_idx(i)`、`has(Str)`、`json_obj_key_at`、`json_encode`。
 2. `doc.server.host`、`doc["a"]["b"] = x`、`doc["port"] + 1`、`printf("%s", doc["host"])`、`for (e in arr)`、`doc.has("k")` 六类写法目前**都写不出来**。
-3. **瓶颈在 CT 语言能力，不在 ct-json 的接口设计**。库层能补的只是几个便捷函数，天花板很低；点访问、链式写、值语义、迭代协议这四类，换任何库设计都做不出来。
+3. **瓶颈在 CT 内置容器的能力边界，不在 ct-json 的接口设计。** ct-json 是外部包，JSON 的值形态就是 `Vec` / `Map` 的组合；点访问、链式写、值语义、迭代协议这四类写法，本质都是「让 `Vec` / `Map` 像 JS 对象/数组那样用」所缺的语法能力。换任何库设计都做不出来，扩张本包自有句柄层也解决不了。
 4. 有一条例外路径：为固定 schema 生成静态 `struct`，点访问、算术、打印全部原生可用（§四 C），但那是静态 schema 形态，不是动态 JSON。
 5. 0.1.0 完工判定不受影响；本评估不改变既有 J 判据结论。
 
@@ -137,9 +138,9 @@ printf("%s\n", doc.server.host.data);
 - 代价：失去动态性——未知键、异构数组、运行时新增键都不行；生成代码与 schema 版本绑定。
 - 风险：这实际上是另一个产品（静态类型化 JSON），不能替代动态 JSON 库。
 
-### D. 目标态：语言协议（真正的 JS 风格）
+### D. 目标态：`Vec` / `Map` 获得语言协议（真正的 JS 风格）
 
-要写出 `doc.server.host`、`arr[0].name`、`doc["a"]["b"] = x`、`n + 1`、`print(doc)`、`for (k in doc)`，需要 CT 补齐 §五 的六项。ct-json 的接口已经按这个方向留了口（`get`/`set` 单参数、`pub`、`JsonRef` 值句柄），**剩下的不在库能改的范围**。
+要写出 `doc.server.host`、`arr[0].name`、`doc["a"]["b"] = x`、`n + 1`、`print(doc)`、`for (k in doc)`，需要 CT 让 `Vec` / `Map` 补齐 §五 列出的六项能力（不是给 ct-json 加接口）。JSON 包只是这两个容器的组合，届时**不需要新增自有接口层**；`JsonRef` 句柄层降级为兼容层或直接移除，见 §5.1。
 
 | 形态 | 用户写法接近 JS | 需要谁改 | 动态 JSON 适配 | 主要风险 |
 | --- | --- | --- | --- | --- |
@@ -148,25 +149,42 @@ printf("%s\n", doc.server.host.data);
 | C 静态 schema | 高（点/算术/打印） | 生成器 | 差（固定 schema） | 失去动态性 |
 | D 语言协议 | 高 | CT | 好 | 类型不安全需运行期检查；语言改动大 |
 
-## 五、需要 CT 补的能力（可直接作为上游需求）
+## 五、对 `Vec` / `Map` 的要求（原「需要 CT 补的能力」的重述）
 
-| # | 缺什么 | 哪段样例因此写不出来 | 现状原文 |
-| --- | --- | --- | --- |
-| R1 | 用户类型属性访问协议（`doc.server` 能映射到库的 `get("server")`） | `js_dot.ct`、`arr[0].name` | `error: no member named 'server' in 'struct JsonRef'` |
-| R2 | 同名方法重载，或下标按键类型分派（`get(char*)` 与 `get(int)` 并存） | `v[0]` 与 `v["k"]` 无法同时成立；`has("k")` 与 `has(Str)` 只能二选一 | 探针：`error: conflicting types for 'T_get'`（C 层） |
-| R3 | 临时值接收者放开（三级链、链式写、结果调方法） | `doc["a"]["b"]["c"]`、`doc["a"]["b"] = x`、`doc["a"].has(k)` | `a method call on a temporary ...` / `a custom subscript write needs a statement and an lvalue receiver` / `method receiver must be ...`（详见 JSON-1、JSON-2） |
-| R4 | 结果当值：运算符重载/隐式取值，以及格式化协议 | `doc["port"] + 1`、`printf("%s", doc["host"])` | `invalid operands to binary expression`；`%s` 编译通过但输出 `host=\x03` |
-| R5 | 容器迭代协议（`foreach` 目前只收一维 C 数组） | `for (JsonRef e in tags)`、`for (Str k in doc)` | `error: unexpected token` |
-| R6 | 字符串字面量到 `Str` 的隐式转换（或键参数的专用重载） | `doc.has("k")`、`Map<Str,V> m["k"]` | `error: passing 'char[5]' to parameter of incompatible type 'struct Str'` |
+口径：ct-json 不定义 CT 缺什么语法；下面每一条都先翻译成「用 `Vec` / `Map` 表达 JSON 时，容器缺的具体能力」。**「能绕」不等于「该由本包修」**：0.1.1 只修可用性与正确性，这些条目一律等 CT。
 
-> R3 已入账 `issues/JSON-1.md`、`JSON-2.md`；R6 的诊断分级已入账 `JSON-3.md`。R1、R2、R4、R5 是本轮新发现，按「评估不改实现、不新开本包 issue」的边界，先按上游需求列在这里，是否入账由负责人定。
+| # | 写法 | 用 Vec/Map 表达时缺的具体能力 | 现在能否绕 | 绕法（当前唯一可写形式） |
+| --- | --- | --- | --- | --- |
+| R1 | `doc.server` | `Map` 无属性访问协议：`doc.server` 无法映射为 `doc.get("server")`，只能按下标取 | 能 | `JsonRef server = doc["server"];`（单层下标；两级限制见 R3） |
+| R2 | `v[0]` 与 `v["k"]` 并存；`has("k")` 与 `has(Str)` 并存 | `Map` 的 `get`/`has` 按键类型只有一个签名：无同名重载、无按键类型分派；`Vec` 的 `at(int)` 与 `Map` 的 `get(Str)` 无法统一到同一个下标运算符 | 能（分名） | 数组用 `get_idx(i)`，对象用 `v["k"]`；`has` 只收 `Str`，`char *` 键先 `str_from`。C 层探针：`error: conflicting types for 'T_get'` |
+| R3 | `doc["a"]["b"]["c"]`、`doc["a"]["b"] = x`、`doc["a"].has(k)` | 容器的下标/方法接收者规则：临时值只能作一次接收者（声明初始化/赋值位置），三级链与参数位置不行；自定义下标写还要求左值接收者 | 能 | 逐级拆局部变量；写用 `JsonRef b = a["b"]; b.set(...)`。报错原文：`a method call on a temporary is only allowed at the start of a statement or of an assignment`、`a custom subscript write needs a statement and an lvalue receiver`、`method receiver must be a variable, an element, a call or a field chain` |
+| R4 | `doc["port"] + 1`、`printf("%s", doc["host"])` | 容器元素无隐式取值与运算符参与：`Vec`/`Map` 的 `at`/`get` 返回容器元素类型，不参与算术；无格式化协议 | 能 | 显式解包：`json_as_int` → `long long`，`json_as_str` → `char *` + `len`。报错原文：`invalid operands to binary expression`；`%s` 编译通过但输出 `host=\x03` |
+| R5 | `for (JsonRef e in tags)`、`for (Str k in doc)` | `Vec` / `Map` 无可遍历协议：`foreach` 只接收一维 C 数组，容器不暴露迭代器形态 | 能 | 数组按下标循环 `0..json_arr_len`；对象用 `json_obj_key_at(v, i, &len)` 逐键取，再 `json_member` |
+| R6 | `doc.has("k")`、`Map<Str,V> m["k"]` | 字面量不转 `Str`：`Map` 的键参数是 `Str`，下标协议把字面量按 `char *` 传入 | 能 | 先 `Str k = str_from("k");` 再传变量；ct-json 仅在 `get`/`set` 两个下标协议入口做 `char *` 适配。报错原文：`passing 'char[5]' to parameter of incompatible type 'struct Str'` |
+
+> R3 已入账 `issues/JSON-1.md`、`JSON-2.md`；R6 的诊断分级已入账 `JSON-3.md`。R1、R2、R4、R5 按上游需求记录，不记作 JSON 库需求。
+
+### 5.1 若 CT 补齐这些能力，JSON 包准备怎么接
+
+本轮**不动实现**，只把接口形状预留写清，避免将来返工：
+
+| CT 能力 | 届时 JSON 包的接法 | 预留的层 |
+| --- | --- | --- |
+| R1 属性访问协议 | 属性访问直接落在 JSON 对象上，不再经 `JsonRef` 转一道；公开面从 `JsonRef.get/set` 退到容器本身 | 对象存储已是 `Str *keys` + `JsonRef *vals` + `Map<Str,int> *index`（规范 §2.3），索引层可原位替换 |
+| R2 按键类型分派（`Vec` 下标 + `Map` 键下标统一） | 去掉 `get_idx`，`v[i]` 由 `Vec` 语义提供；`has` 保持单签名 | 数组已是 `JsonArr{len,cap,items}`，内部可换 `Vec<JsonRef>` 而不改上层 |
+| R3 临时值接收者放开 | `v["a"]["b"]["c"]` 与 `v["a"]["b"] = x` 直接成立；包侧只删文档里的拆分说明 | 无需新层：`get`/`set` 已是单参数、`pub` |
+| R4 运算符/格式化 | `json_as_*` 保留为显式转换，不引入隐式转换；另加返回值形态的便捷函数 | `JsonRef` 是 8 字节值句柄，已满足「可当值传递」 |
+| R5 容器迭代协议 | 删掉 `json_obj_key_at` 的手工循环示例，改为 `for (k in doc)`；`JsonArr` 换可迭代容器 | 对象保序已在 `keys` 数组里，迭代序即插入序 |
+| R6 字面量→`Str` | 删除 `get`/`set` 的 `char *` 协议例外，两入口改回 `Str`；其余 API 不变 | 协议入口是唯一的 `char *` 面，收口点单一 |
+
+约束：以上任一项都要求 CT 先改语言/标准库；在此之前 0.1.1 不预埋分支、不加开关，避免为未落地能力写无效代码。
 
 ## 六、对版本的影响
 
 - 0.1.0 完工判定不变，J 判据结论不变。
-- 0.1.1 能做的只有 A 类便捷函数（`has_cstr`、`json_str_of` 等），**不能把形态变成 JS 风格**。
-- B 需要改 std 的 `Mapget`/字面量下标；C 是生成器产品；D 必须等语言。
-- 若负责人目标是「像 map/vec 一样用」，路线应是：先把 R1～R6 提给 CT，同期 0.1.1 只做 A 类过渡，不做 B 类（会把缺失/类型语义做坏）。
+- **0.1.1 只修可用性与正确性**（包能被 `ct get` / `ct install` 消费），不加接口层能力；A 类便捷函数扩张（`has_cstr`、`json_str_of` 等）一并推迟，等 CT 修完相关 bug 再谈。
+- B 需要改 std 的 `Map.get`/字面量下标（即 R6）；C 是生成器产品；D 必须等 CT 让 Vec/Map 具备 §五 的六项能力。
+- 若负责人目标是「像 map/vec 一样用」，路线应是：先把 R1～R6 作为 Vec/Map 需求提给 CT，包侧保持现有最小接口，不做过渡性接口扩张。
 
 ## 七、复现
 

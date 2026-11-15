@@ -4,6 +4,25 @@
 > 旧版：`ct-json-spec.md`（基于 CT v0.44.1）。差异见 `ct-json-0.1.0-rewrite-notes.md`；历史复评 `docs/review/ct-json-0.1.0-reeval-v0.52.0.md` 保留其 v0.52.0 基线，不随本版改口。
 > 六题已全部裁定（Q-1～Q-5 与规范重写）；仅写入浮点编码格式作为实现细节待定（Q-6），不阻塞主体。
 
+## 〇、目标形态与 0.1.1 口径
+
+**ct-json 是外部包，不是 CT 的内部机制。** 它只依赖 CT 内置的两个容器：`Vec` 与 `Map`。JSON 的值形态就是这两个容器的组合——对象 = 保序的 `Str → 值` 映射，数组 = 值序列；CT 里**不存在**内置 JSON 类型，本包也不谋求成为内置机制。
+
+由此定两条口径：
+
+1. **演进方向不是扩张本包自有句柄层。** `JsonRef` / `JsonNode` 是 0.1.0 的过渡实现：为了在 CT 当前的 `Vec` / `Map` 能力边界内把读写做对（保序、共享子对象、引用计数、数字双轨）。凡是看起来像「JSON 库需要 X」的诉求，先翻译成「`Vec` / `Map` 需要什么语法能力」；能落在容器既有能力上的，不记成 JSON 库的需求（逐条重述见 `docs/review/ct-json-0.1.0-js-style-eval.md` §五）。
+2. **0.1.1 只修可用性与正确性，不加接口层能力。** 本版验收口径：`ct get` + `ct install` 装完后消费方能 `import json::src::json`、9 个样例可编可跑、门禁绿；共享库机制尚未落地，本轮以既有 `vendor/<包>` 方式为准。需要新语言能力（同名重载、属性访问协议、三级链、容器迭代、字面量→`Str`）的条目一律标「等 CT」留在 backlog，不实现。
+
+消费方式（0.1.1 实测）：
+
+```
+consumers/  ct get ../../            # → vendor/json/ + ct.lock（消费方自身需先有 ct.pkg）
+            ct install               # 打印 ct build -I vendor/json <unit>.ct -o build
+            # 源码里：import json::src::json;
+```
+
+`ct.pkg` 的 `namespace = json` 会剥掉 import 首段，`ct install` 只发 `-I vendor/json`，所以 import 路径里仍要写 `src/json`（包根即单元根，单元在 `src/` 下）。
+
 ## 一、定位
 
 ct-json 做两件事：把 JSON 文本解码为可读写的树；把树编码回 JSON 文本。
