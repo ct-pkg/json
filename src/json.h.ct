@@ -181,10 +181,6 @@ pub int json_arr_len(JsonRef v);
    keeps. */
 pub JsonRef json_member(JsonRef v, Str key);
 
-/* Borrowed element handle; empty when `v` is not an array or `i` is out of
-   range. */
-pub JsonRef json_at(JsonRef v, int i);
-
 /* Borrowed key bytes at `i` in insertion order, with the byte count written to
    `len`; 0 out of range. */
 pub char *json_obj_key_at(JsonRef v, int i, int *len);
@@ -1121,15 +1117,6 @@ pub JsonRef json_member(JsonRef v, Str key)
     return o->vals[*slot];
 }
 
-pub JsonRef json_at(JsonRef v, int i)
-{
-    JsonArr *a;
-    if (v.p == 0 || v.p->tag != JSON_TAG_ARR || i < 0) return j1_empty();
-    a = v.p->v.arr;
-    if (a == 0 || i >= a->len) return j1_empty();
-    return a->items[i];
-}
-
 pub char *json_obj_key_at(JsonRef v, int i, int *len)
 {
     JsonObj *o;
@@ -1140,7 +1127,7 @@ pub char *json_obj_key_at(JsonRef v, int i, int *len)
     return o->keys[i].data;
 }
 
-/* ------------------------------------------------------------- members */
+/* ------------------------------------------------- members and arrays */
 
 impl JsonRef {
     /* Key presence with the same comparison `json_member` uses, so an embedded
@@ -1153,6 +1140,48 @@ impl JsonRef {
         o = self->p->v.obj;
         if (o == 0) return 0;
         return o->index->has(key);
+    }
+
+    /* 0.1.0 array read entry (Q-2 A). `v[0]` does not exist in v0.52.0: the
+       subscript protocol only matches a single `char *` key. A missing index,
+       a negative index and a non-array all answer the empty handle; a present
+       JSON null answers a non-empty handle whose tag is JSON_TAG_NULL. The
+       length is available through `json_arr_len`. */
+    pub JsonRef get_idx(int i)
+    {
+        JsonArr *a;
+        if (self->p == 0 || self->p->tag != JSON_TAG_ARR || i < 0) return j1_empty();
+        a = self->p->v.arr;
+        if (a == 0 || i >= a->len) return j1_empty();
+        return a->items[i];
+    }
+
+    /* Append; the container keeps its own reference, so the caller keeps and
+       releases its handle. */
+    pub void push(JsonRef v)
+    {
+        JsonArr *a;
+        if (self->p == 0 || self->p->tag != JSON_TAG_ARR) return;
+        a = self->p->v.arr;
+        if (a == 0) return;
+        json_retain(v);
+        if (!j1_arr_push(a, v)) json_release(v);
+    }
+
+    /* Overwrite an existing index only: no growth, no element shift. Out of
+       range (and a non-array, which has no valid index) answers
+       JSON_ERR_RANGE and leaves the array untouched. The new value is retained
+       before the old one is released, so `set_idx(i, get_idx(i))` is safe. */
+    pub int set_idx(int i, JsonRef v)
+    {
+        JsonArr *a;
+        if (self->p == 0 || self->p->tag != JSON_TAG_ARR || i < 0) return JSON_ERR_RANGE;
+        a = self->p->v.arr;
+        if (a == 0 || i >= a->len) return JSON_ERR_RANGE;
+        json_retain(v);
+        json_release(a->items[i]);
+        a->items[i] = v;
+        return JSON_OK;
     }
 
     /* Insert or overwrite a string value. The key is deep-copied by the
