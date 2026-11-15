@@ -107,7 +107,7 @@ impl JsonRef {
     pub void set_str(Str key, char *text, int len);
     pub void set_null(Str key);
     pub void remove(Str key);
-    pub void append(JsonRef value);   // 数组追加
+    pub void push(JsonRef value);     // 数组追加
 }
 ```
 
@@ -133,7 +133,10 @@ pub int json_arr_len(JsonRef v);   // 不是数组时返回 -1
 - 返回第 `i` 个元素的句柄；元素为 `null` 时返回有效句柄，`json_tag` 为 `JSON_TAG_NULL`。
 - `i < 0`、`i >= len`、非数组：返回 `p == NULL` 的空句柄，不崩、不分配；越界与缺失同值，长度先查 `json_arr_len`。
 - 过渡方案：CT 支持用户类型数字下标后切换到 `v[i]`，届时 `get_idx` 是否保留另行决定。
-- 数组按下标覆盖/插入/删除的写入口不在本条裁定内，本版不冻结（Q-2 只裁了读入口）。
+- 数组写入口 0.1.0 只给两个（Q-2 已定）：
+  - `set_idx(int i, JsonRef v)`：只覆盖已存在的下标；`i < 0` 或 `i >= len` 返回 `JSON_ERR_RANGE`，**不自动扩容**；成功时释放旧值这份引用。
+  - `push(JsonRef v)`：追加到末尾。
+- 插入与删除**0.1.0 不支持**：需要移动后续元素并使外部已持有的引用/下标失效，本版不做；原因写在此处，不写成「暂不支持」。
 
 ```ct
 JsonRef items = root["items"];
@@ -269,7 +272,7 @@ k.release();                  // 外部释放后对象仍持有副本
 | 编号 | 问题 | 本版处理 |
 | --- | --- | --- |
 | Q-1 | 对象键强制 `Str` 还是允许 `char *` | **已裁定 A**：`Str` 键、插入深拷贝、容器持有；协议入口 `get`/`set` 的 `char *` 例外见 §3.2，待负责人确认 |
-| Q-2 | 数字下标等 `v[0]`，还是先 `get_idx` | **已裁定 A**：0.1.0 只提供 `get_idx(i)`，`v[0]` 不支持；语义见 §3.4；写入口未裁定 |
+| Q-2 | 数字下标等 `v[0]`，还是先 `get_idx` | **已裁定 A**：0.1.0 只提供 `get_idx(i)`；写入口只给 `set_idx(i,v)`（越界报错、不扩容）与 `push(v)`；插入/删除不支持 |
 | Q-3 | ADR-0001 规则 4 的「Drop 空桩」理由是否改写 | **已裁定 B**：规则 4 降级，不强制空 `impl Drop`；需自定义释放时显式写并说明释放什么；理由见 ADR-0001 注 |
 | Q-4 | 容器元素由调用方显式 release，还是等容器自动 drop | **已裁定 A**：容器负责释放元素（Drop 循环 `json_release`）；泛型容器限制见 §3.7 |
 | Q-5 | `requirements.md` 的 Q-01 是否随 ADR-0001 更新 | **已裁定 A**：已同步为已定结论并指向 ADR-0001 |

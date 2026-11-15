@@ -50,7 +50,7 @@
 | 22 | §13 五个示例 | 删除自动转换/链式示例；保留 decode→读→改→encode 的可编译形态 | `a.ct`、`xunit`、`c` |
 | 23 | §14 一句话「靠 L1 / 靠自动转换」 | 改为「字符串键单层下标是正式入口」 | 同上 |
 | 24 | 键类型未定 | 键强制 `Str`，插入深拷贝、容器持有；`get`/`set` 保留 `char *` 仅作协议适配 | Q-1 裁定 A；`strkey`：`get(Str)` 使 `v["k"]` 报 `passing 'char[2]' to parameter of incompatible type 'struct Str'`；`pStrKey`：`Str` 键 release 后仍命中 |
-| 25 | 数字下标待定 | 0.1.0 只提供 `get_idx(i)`；`v[0]` 标不支持；越界/非数组返回空句柄；写明过渡 | Q-2 裁定 A；`pO`：`get(char*)` 与 `get(int)` 同名冲突，故必须分名；`pSub2`：数字/链式不匹配 |
+| 25 | 数字下标待定 | 0.1.0 只提供 `get_idx(i)`；`v[0]` 标不支持；写入口只给 `set_idx(i,v)`（越界 `JSON_ERR_RANGE`、不扩容）与 `push(v)`；插入/删除标不支持 | Q-2 裁定 A；`pO`：`get(char*)` 与 `get(int)` 同名冲突，故必须分名；`pSub2`：数字/链式不匹配 |
 | 26 | ADR-0001 规则 4「不依赖 Drop」被当成强制规则 | ADR-0001 加「规则 4 降级」注：不强制空 `impl Drop`；需自定义释放时显式写并说明释放什么；规范 §3.7 同步 | Q-3 裁定 B；`same drop 5`、`res drop 7`、`A drop 2`（v0.48.0 起字段胶水已闭环） |
 | 27 | 容器元素释放未定 | 容器负责：`JsonObj`/`JsonArr` 的 Drop 循环 `json_release`；先元素后数组；只释放 `len` 个；泛型容器限制写明 | Q-4 裁定 A；`vecstr` 的 `Vec_Str__elem_release` 调 `Str_release`；`vecd` / `vecd2` 的用户 struct 为 `(void)e;`（空体）；`ownarr` 显式循环 `freed=2` |
 | 28 | `requirements.md` X-01 仍「待 Q-01」 | 改为已定结论并指向 ADR-0001；非目标表的「可变 DOM」条目同步 | Q-5 裁定 A |
@@ -75,4 +75,4 @@
 
 ## 5 未决事项（未在规范里代选）
 
-Q-1 键类型已裁定为 `Str`（协议入口的 `char *` 例外待确认）；Q-2 已裁定 0.1.0 只提供 `get_idx(i)`（数组按下标的写入口仍未裁定）；Q-3 已裁定规则 4 降级；Q-4 已裁定容器负责释放元素；Q-5 已裁定同步 `requirements.md`；仅 Q-6 写入浮点编码格式作为实现细节待定。规范正文不写实现、不写判据外的承诺。
+Q-1 键类型已裁定为 `Str`（`get`/`set` 的 `char *` 为协议例外）；Q-2 已裁定 `get_idx` 读、`set_idx`/`push` 写，插入/删除不支持；Q-3 已裁定规则 4 降级；Q-4 已裁定容器负责释放元素；Q-5 已裁定同步 `requirements.md`；仅 Q-6 写入浮点编码格式作为实现细节待定。
