@@ -55,7 +55,7 @@ $ /tmp/jsongate | diff - json.expected.out
 | 7 | 补负例红证：非 `pub` 下标、容器 Drop 顺序、`cap > len` 不越界释放 | G5 要求每条断言至少一个曾变红的负例 |
 | 8 | `JsonObj.index` 用 `Map<Str,int>`：v0.53.0 的 `Map` 实为插入序线性查找且每键两份副本；键多时改哈希或去掉冗余副本 | 规范 §2.3 注释 |
 | 9 | 规范文档 347 行，超过 G4 的 300 行上限，需按 8.4 拆分（门禁建立前先登记） | AGENTS.md G4 `g4-size` |
-| 10 | 包根迁移：现用 `namespace = json` + `import json::src::json` 过渡；等共享库机制/包根约定落地再改。已作为 EXT-JSON-01/03 登记到 `docs/spec/ct-json-package-tasks.md` | 0.1.1 验收记录 §五 |
+| 10 | 包根迁移：现用 `namespace = json` + `import json::src::json` 过渡；等共享库机制/包根约定落地再改。已登记到 `docs/spec/ct-json-delivery-backlog.md`（第 1、3 项） | 0.1.1 验收记录 §五 |
 
 ## 五、0.1.1 验收记录（可用性补丁，CT v0.53.0）
 
