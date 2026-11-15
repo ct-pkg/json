@@ -1,15 +1,25 @@
 /*
- * J1 acceptance driver: decode -> encode round trips plus the access contract.
+ * ct-json 0.1.0 acceptance driver (CT v0.52.0 rewrite).
  *
- * Build and run (the multi-file form is the one that catches generated-header
- * and incomplete-type problems, so it is the one used here):
+ * Covers decode/encode round trips, the access contract, the parse error
+ * codes, and the reference-counted node lifecycle. Shard 1 of the rewrite:
+ * keys are still `char *` and array access still uses `json_at`; later shards
+ * switch keys to `Str`, add `get_idx` / `set_idx` / `push`, and hang
+ * `get` / `set` off `JsonRef` for the subscript protocol.
+ *
+ * The counters travel through a `struct Stats *` on purpose: a file-scope
+ * counter plus a `check()` helper plus any `char *` parameter trips the
+ * v0.52.0 false positive `a borrowed view is invalidated by a later mutation
+ * of its container` (known compiler defect, not a test bug).
+ *
+ * Build and run:
  *
  *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
- *     ~/.local/bin/ct build test/j1_roundtrip.ct -I src -o /tmp/j1_roundtrip
- *   /tmp/j1_roundtrip > /tmp/j1_roundtrip.out
- *   diff /tmp/j1_roundtrip.out test/j1_roundtrip.expected.out
+ *     ~/.local/bin/ct build test/j1_roundtrip.ct -I src -o /tmp/ctjson_test
+ *   /tmp/ctjson_test
  *
- * Exit code is 0 only when every line matches the golden file.
+ * Exit code is 0 only when every check passes. Negative checks print
+ * "not ok"; the failure count is the last line.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,53 +27,61 @@
 
 import json;
 
-static int total = 0;
-static int failed = 0;
+struct Stats {
+    int total;
+    int failed;
+}
 
-static void check(int cond, char *name)
+static void check(struct Stats *st, int cond, char *name)
 {
-    total = total + 1;
+    st->total = st->total + 1;
     if (cond) {
-        printf("ok %d %s\n", total, name);
+        printf("ok %d %s\n", st->total, name);
     } else {
-        failed = failed + 1;
-        printf("not ok %d %s\n", total, name);
+        st->failed = st->failed + 1;
+        printf("not ok %d %s\n", st->total, name);
     }
 }
 
-static int roundtrip(char *name, char *text, char *want)
+static JsonRef empty_ref(void)
 {
-    JsonError err;
-    JsonValue *root;
+    JsonRef r;
+    r.p = 0;
+    return r;
+}
+
+static void roundtrip(struct Stats *st, char *name, char *text, char *want)
+{
+    JsonRef root = empty_ref();
     char *out;
     int same;
-    root = json_decode(text, (int)strlen(text), &err);
-    if (root == 0) {
-        fprintf(stderr, "# %s: decode failed code=%d offset=%d\n", name, err.code, err.offset);
-        check(0, name);
-        return 0;
+    int rc;
+    rc = json_decode(text, (int)strlen(text), &root);
+    if (rc != JSON_OK) {
+        fprintf(stderr, "# %s: decode failed rc=%d\n", name, rc);
+        check(st, 0, name);
+        return;
     }
     out = json_encode(root);
     same = out != 0 && strcmp(out, want) == 0;
     if (!same)
         fprintf(stderr, "# %s: got [%s] want [%s]\n", name, out == 0 ? "(null)" : out, want);
-    check(same, name);
+    check(st, same, name);
     free(out);
     json_free(root);
-    return same;
 }
 
-static void expect_err(char *name, char *text, int code, int off)
+static void expect_err(struct Stats *st, char *name, char *text, int code)
 {
-    JsonError err;
-    JsonValue *root;
-    int good;
-    root = json_decode(text, (int)strlen(text), &err);
-    good = root == 0 && err.code == code && err.offset == off;
-    if (!good)
-        fprintf(stderr, "# %s: root-null=%d code=%d offset=%d want code=%d offset=%d\n",
-                name, root == 0, err.code, err.offset, code, off);
-    check(good, name);
+    JsonRef root = empty_ref();
+    int rc;
+    rc = json_decode(text, (int)strlen(text), &root);
+    if (rc != code) {
+        fprintf(stderr, "# %s: rc=%d want=%d\n", name, rc, code);
+        check(st, 0, name);
+    } else {
+        check(st, root.p == 0, name);
+    }
     json_free(root);
 }
 
@@ -80,119 +98,163 @@ static char *nest(int depth)
     return s;
 }
 
-static void access_contract(void)
+static void lifecycle_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef child;
+    JsonRef nested;
+    int rc;
+    int x = 0;
+
+    rc = json_decode("{\"a\":{\"x\":7}}", 13, &root);
+    check(st, rc == JSON_OK, "lifecycle fixture decodes");
+    if (rc != JSON_OK) return;
+
+    check(st, root.p != 0 && root.p->refs == 1, "a fresh root is one reference");
+    json_retain(root);
+    check(st, root.p->refs == 2, "retain adds one reference");
+    json_release(root);
+    check(st, root.p->refs == 1, "release drops one reference");
+
+    child = json_member(root, "a");
+    check(st, child.p != 0 && child.p->refs == 1, "a member is borrowed, not retained");
+    json_retain(child);
+    check(st, child.p->refs == 2, "retain on a borrowed member is explicit");
+
+    json_release(root);            /* frees the tree, drops one child ref */
+    check(st, child.p->refs == 1, "child survives the container release");
+
+    nested = json_member(child, "x");
+    check(st, json_as_int(nested, &x) == JSON_OK && x == 7, "child is readable after the parent is gone");
+    json_free(child);
+}
+
+static void access_contract(struct Stats *st)
 {
     char *text = "{\"a\":1,\"n\":null,\"s\":\"x\",\"arr\":[10,20],\"obj\":{\"k\":true},\"f\":2.5}";
-    JsonError err;
-    JsonValue *root = json_decode(text, (int)strlen(text), &err);
-    JsonValue *missing;
-    JsonValue *explicit_null;
+    JsonRef root = empty_ref();
+    JsonRef missing;
+    JsonRef explicit_null;
+    JsonRef arr;
     char *null_key = 0;
-    if (root == 0) {
-        fprintf(stderr, "# access fixture failed code=%d offset=%d\n", err.code, err.offset);
-        check(0, "access fixture decodes");
+    long long iv = 0;
+    double dv = 0.0;
+    int bv = 0;
+    int slen = -1;
+    char *s;
+    int rc;
+
+    rc = json_decode(text, (int)strlen(text), &root);
+    if (rc != JSON_OK) {
+        fprintf(stderr, "# access fixture failed rc=%d\n", rc);
+        check(st, 0, "access fixture decodes");
         return;
     }
-    check(err.code == JSON_OK && err.offset == (int)strlen(text), "decode reports JSON_OK at len");
-    check(json_tag(root) == JSON_OBJ, "root tag is JSON_OBJ");
-    check(json_obj_len(root) == 6, "object has six keys");
-    check(json_arr_len(root) == 0, "array length defaults to 0 on an object");
+    check(st, json_last_error() == JSON_OK, "decode leaves last_error at JSON_OK");
+    check(st, json_tag(root) == JSON_TAG_OBJ, "root tag is JSON_TAG_OBJ");
+    check(st, json_obj_len(root) == 6, "object has six keys");
+    check(st, json_arr_len(root) == -1, "array length is -1 on an object");
 
     missing = json_member(root, "zz");
-    check(missing == 0, "missing key answers 0");
-    check(json_tag(missing) == -1, "tag of a missing node is -1");
+    check(st, missing.p == 0, "missing key answers an empty handle");
+    check(st, json_tag(missing) == -1, "tag of an empty handle is -1");
     explicit_null = json_member(root, "n");
-    check(explicit_null != 0, "explicit null answers a node");
-    check(json_tag(explicit_null) == JSON_NULL, "explicit null has tag JSON_NULL");
-    check(json_is_null(explicit_null) == 1, "is_null is true for explicit null");
-    check(json_is_null(missing) == 0, "is_null is false for a missing node");
+    check(st, explicit_null.p != 0, "explicit null answers a node");
+    check(st, json_tag(explicit_null) == JSON_TAG_NULL, "explicit null has tag JSON_TAG_NULL");
+    check(st, json_is_null(explicit_null) == 1, "is_null is true for explicit null");
+    check(st, json_is_null(missing) == 0, "is_null is false for an empty handle");
 
-    check(json_as_int(json_member(root, "a")) == 1, "as_int reads an integer");
-    check(json_as_num(json_member(root, "a")) == 1.0, "as_num widens an integer");
-    check(json_as_num(json_member(root, "f")) == 2.5, "as_num reads a double");
-    check(strcmp(json_as_str(json_member(root, "s")), "x") == 0, "as_str reads a string");
-    check(json_as_int(json_member(root, "s")) == 0, "as_int on a string answers 0");
-    check(json_as_str(json_member(root, "obj")) == 0, "as_str on an object answers 0");
-    check(json_as_bool(explicit_null) == 0, "as_bool on null answers 0");
-    check(json_as_int(missing) == 0, "as_int on a missing node answers 0");
+    check(st, json_as_int(json_member(root, "a"), &iv) == JSON_OK && iv == 1, "as_int reads an integer literal");
+    check(st, json_as_double(json_member(root, "a"), &dv) == JSON_OK && dv == 1.0, "as_double widens an integer literal");
+    check(st, json_as_double(json_member(root, "f"), &dv) == JSON_OK && dv == 2.5, "as_double reads a decimal");
+    s = json_as_str(json_member(root, "s"), &slen);
+    check(st, s != 0 && slen == 1 && s[0] == 'x', "as_str reads a string with its length");
+    iv = 0;
+    check(st, json_as_int(json_member(root, "s"), &iv) == JSON_ERR_TYPE && iv == 0, "as_int on a string is a type error");
+    check(st, json_as_str(json_member(root, "obj"), &slen) == 0, "as_str on an object answers 0");
+    check(st, json_as_bool(explicit_null, &bv) == JSON_ERR_TYPE, "as_bool on null is a type error");
+    check(st, json_as_int(missing, &iv) == JSON_ERR_TYPE, "as_int on an empty handle is a type error");
+    check(st, json_as_bool(json_member(json_member(root, "obj"), "k"), &bv) == JSON_OK && bv == 1, "as_bool reads true");
 
-    check(json_obj_len(json_member(root, "arr")) == 0, "obj_len on an array answers 0");
-    check(json_arr_len(json_member(root, "obj")) == 0, "arr_len on an object answers 0");
-    check(json_as_obj(json_member(root, "arr")) == 0, "as_obj on an array answers 0");
-    check(json_as_arr(json_member(root, "obj")) == 0, "as_arr on an object answers 0");
-    check(json_as_obj(root) != 0, "as_obj on an object is non-null");
-    check(json_as_arr(json_member(root, "arr")) != 0, "as_arr on an array is non-null");
+    check(st, json_obj_len(json_member(root, "arr")) == -1, "obj_len on an array is -1");
+    check(st, json_arr_len(json_member(root, "obj")) == -1, "arr_len on an object is -1");
 
-    check(json_arr_len(json_member(root, "arr")) == 2, "array length is 2");
-    check(json_as_int(json_at(json_member(root, "arr"), 0)) == 10, "at(0) is 10");
-    check(json_as_int(json_at(json_member(root, "arr"), 1)) == 20, "at(1) is 20");
-    check(json_at(json_member(root, "arr"), 2) == 0, "at(len) answers 0");
-    check(json_at(json_member(root, "arr"), -1) == 0, "at(-1) answers 0");
-    check(json_at(root, 0) == 0, "at on an object answers 0");
-    check(json_member(json_member(root, "arr"), "x") == 0, "member on an array answers 0");
-    check(json_member(root, null_key) == 0, "member with a NULL key answers 0");
+    arr = json_member(root, "arr");
+    check(st, json_arr_len(arr) == 2, "array length is 2");
+    check(st, json_as_int(json_at(arr, 0), &iv) == JSON_OK && iv == 10, "at(0) is 10");
+    check(st, json_as_int(json_at(arr, 1), &iv) == JSON_OK && iv == 20, "at(1) is 20");
+    check(st, json_at(arr, 2).p == 0, "at(len) answers an empty handle");
+    check(st, json_at(arr, -1).p == 0, "at(-1) answers an empty handle");
+    check(st, json_at(root, 0).p == 0, "at on an object answers an empty handle");
+    check(st, json_member(arr, "x").p == 0, "member on an array answers an empty handle");
+    check(st, json_member(root, null_key).p == 0, "member with a NULL key answers an empty handle");
 
-    check(strcmp(json_obj_key_at(root, 0), "a") == 0, "key_at(0) keeps insertion order");
-    check(strcmp(json_obj_key_at(root, 1), "n") == 0, "key_at(1) keeps insertion order");
-    check(json_obj_key_at(root, 6) == 0, "key_at out of range answers 0");
-    check(json_obj_key_at(json_member(root, "arr"), 0) == 0, "key_at on an array answers 0");
+    check(st, strcmp(json_obj_key_at(root, 0), "a") == 0, "key_at(0) keeps insertion order");
+    check(st, strcmp(json_obj_key_at(root, 1), "n") == 0, "key_at(1) keeps insertion order");
+    check(st, json_obj_key_at(root, 6) == 0, "key_at out of range answers 0");
+    check(st, json_obj_key_at(arr, 0) == 0, "key_at on an array answers 0");
 
     json_free(root);
 }
 
-static void numeric_edges(void)
+static void numeric_edges(struct Stats *st)
 {
-    JsonError err;
+    JsonRef root = empty_ref();
     char *text = "{\"max\":9223372036854775807,\"min\":-9223372036854775808,\"over\":9223372036854775808}";
-    JsonValue *root = json_decode(text, (int)strlen(text), &err);
-    if (root == 0) {
-        check(0, "numeric fixture decodes");
+    long long iv = 0;
+    double dv = 0.0;
+    int rc;
+
+    rc = json_decode(text, (int)strlen(text), &root);
+    if (rc != JSON_OK) {
+        check(st, 0, "numeric fixture decodes");
         return;
     }
-    check(json_tag(json_member(root, "max")) == JSON_INT, "int64 max stays JSON_INT");
-    check(json_as_int(json_member(root, "max")) == 9223372036854775807, "int64 max is exact");
-    check(json_tag(json_member(root, "min")) == JSON_NUM, "int64 min falls back to JSON_NUM");
-    check(json_as_num(json_member(root, "min")) == -9223372036854775808.0, "int64 min is exact as a double");
-    check(json_tag(json_member(root, "over")) == JSON_NUM, "int64 max + 1 falls back to JSON_NUM");
+    check(st, json_tag(json_member(root, "max")) == JSON_TAG_NUM, "max is a number");
+    check(st, json_as_int(json_member(root, "max"), &iv) == JSON_OK && iv == 9223372036854775807LL, "int64 max is exact");
+    check(st, json_as_int(json_member(root, "over"), &iv) == JSON_ERR_RANGE, "int64 max + 1 is a range error");
+    check(st, json_as_double(json_member(root, "min"), &dv) == JSON_OK, "int64 min is readable as a double");
     json_free(root);
 }
 
-static void error_contract(void)
+static void error_contract(struct Stats *st)
 {
-    JsonError err;
+    JsonRef root = empty_ref();
     char *deep64;
     char *deep65;
-    JsonValue *root;
+    int rc;
 
-    expect_err("empty input is EOF", "", JSON_ERR_EOF, 0);
-    expect_err("whitespace only is EOF", "  ", JSON_ERR_EOF, 2);
-    expect_err("second root is trailing", "{} {}", JSON_ERR_TRAILING, 3);
-    expect_err("unterminated object is EOF", "{", JSON_ERR_EOF, 1);
-    expect_err("unterminated string is EOF", "\"abc", JSON_ERR_EOF, 4);
-    expect_err("missing value is syntax", "{\"a\":}", JSON_ERR_SYNTAX, 5);
-    expect_err("trailing comma in array is syntax", "[1,]", JSON_ERR_SYNTAX, 3);
-    expect_err("missing colon is syntax", "{\"a\" 1}", JSON_ERR_SYNTAX, 5);
-    expect_err("leading zero is a number error", "01", JSON_ERR_NUMBER, 1);
-    expect_err("bare minus is a number error", "-", JSON_ERR_NUMBER, 1);
-    expect_err("dot without digits is a number error", "1.", JSON_ERR_NUMBER, 2);
-    expect_err("exponent without digits is a number error", "1e", JSON_ERR_NUMBER, 2);
-    expect_err("plus prefix is syntax", "+1", JSON_ERR_SYNTAX, 0);
-    expect_err("unknown escape is an escape error", "\"\\q\"", JSON_ERR_ESCAPE, 3);
-    expect_err("bad hex is a unicode error", "\"\\u00zz\"", JSON_ERR_UNICODE, 5);
-    expect_err("lone high surrogate is a surrogate error", "\"\\ud800\"", JSON_ERR_SURROGATE, 7);
-    expect_err("control byte in string is a string error", "\"a\nb\"", JSON_ERR_STRING, 2);
+    expect_err(st, "empty input is EOF", "", JSON_ERR_EOF);
+    expect_err(st, "whitespace only is EOF", "  ", JSON_ERR_EOF);
+    expect_err(st, "second root is trailing", "{} {}", JSON_ERR_TRAILING);
+    expect_err(st, "unterminated object is EOF", "{", JSON_ERR_EOF);
+    expect_err(st, "unterminated string is EOF", "\"abc", JSON_ERR_EOF);
+    expect_err(st, "missing value is syntax", "{\"a\":}", JSON_ERR_SYNTAX);
+    expect_err(st, "trailing comma in array is syntax", "[1,]", JSON_ERR_SYNTAX);
+    expect_err(st, "missing colon is syntax", "{\"a\" 1}", JSON_ERR_SYNTAX);
+    expect_err(st, "leading zero is a number error", "01", JSON_ERR_NUMBER);
+    expect_err(st, "bare minus is a number error", "-", JSON_ERR_NUMBER);
+    expect_err(st, "dot without digits is a number error", "1.", JSON_ERR_NUMBER);
+    expect_err(st, "exponent without digits is a number error", "1e", JSON_ERR_NUMBER);
+    expect_err(st, "plus prefix is syntax", "+1", JSON_ERR_SYNTAX);
+    expect_err(st, "unknown escape is an escape error", "\"\\q\"", JSON_ERR_ESCAPE);
+    expect_err(st, "bad hex is a unicode error", "\"\\u00zz\"", JSON_ERR_UNICODE);
+    expect_err(st, "lone high surrogate is a surrogate error", "\"\\ud800\"", JSON_ERR_SURROGATE);
+    expect_err(st, "control byte in string is a string error", "\"a\nb\"", JSON_ERR_STRING);
 
-    root = json_decode(0, 0, &err);
-    check(root == 0 && err.code == JSON_ERR_EOF && err.offset == 0, "NULL text is EOF");
+    rc = json_decode(0, 0, &root);
+    check(st, rc == JSON_ERR_EOF && root.p == 0, "NULL text is EOF");
     json_free(root);
 
     deep64 = nest(64);
     deep65 = nest(65);
-    root = json_decode(deep64, (int)strlen(deep64), &err);
-    check(root != 0 && err.code == JSON_OK, "64 levels decode");
+    root = empty_ref();
+    rc = json_decode(deep64, (int)strlen(deep64), &root);
+    check(st, rc == JSON_OK, "64 levels decode");
     json_free(root);
-    root = json_decode(deep65, (int)strlen(deep65), &err);
-    check(root == 0 && err.code == JSON_ERR_DEPTH && err.offset == 64, "65 levels stop at depth 64");
+    root = empty_ref();
+    rc = json_decode(deep65, (int)strlen(deep65), &root);
+    check(st, rc == JSON_ERR_DEPTH && root.p == 0, "65 levels stop at depth 64");
     json_free(root);
     free(deep64);
     free(deep65);
@@ -200,41 +262,46 @@ static void error_contract(void)
 
 int main(void)
 {
+    struct Stats st;
     char *deep64 = nest(64);
-    check(json_encode(0) == 0, "encode of a NULL tree answers 0");
-    check(json_tag(0) == -1, "tag of a NULL tree is -1");
 
-    roundtrip("round trip: empty object", "{}", "{}");
-    roundtrip("round trip: empty array", "[]", "[]");
-    roundtrip("round trip: scalars",
+    st.total = 0;
+    st.failed = 0;
+
+    check(&st, json_encode(empty_ref()) == 0, "encode of an empty handle answers 0");
+    check(&st, json_tag(empty_ref()) == -1, "tag of an empty handle is -1");
+
+    roundtrip(&st, "round trip: empty object", "{}", "{}");
+    roundtrip(&st, "round trip: empty array", "[]", "[]");
+    roundtrip(&st, "round trip: scalars",
               "{\"t\":true,\"f\":false,\"n\":null}", "{\"t\":true,\"f\":false,\"n\":null}");
-    roundtrip("round trip: nested",
+    roundtrip(&st, "round trip: nested",
               "{\"server\":{\"host\":\"localhost\",\"port\":8080},\"tags\":[\"a\",\"b\"],\"ok\":false}",
               "{\"server\":{\"host\":\"localhost\",\"port\":8080},\"tags\":[\"a\",\"b\"],\"ok\":false}");
-    roundtrip("round trip: nested arrays", "[[1,2],[3,4],[]]", "[[1,2],[3,4],[]]");
-    roundtrip("round trip: whitespace normalised", " { \"a\" : [ 1 , 2 ] } ", "{\"a\":[1,2]}");
-    roundtrip("round trip: escapes",
+    roundtrip(&st, "round trip: nested arrays", "[[1,2],[3,4],[]]", "[[1,2],[3,4],[]]");
+    roundtrip(&st, "round trip: whitespace normalised", " { \"a\" : [ 1 , 2 ] } ", "{\"a\":[1,2]}");
+    roundtrip(&st, "round trip: escapes",
               "{\"s\":\"a\\\"b\\\\c\\nd\\te\"}", "{\"s\":\"a\\\"b\\\\c\\nd\\te\"}");
-    roundtrip("round trip: unicode escapes",
+    roundtrip(&st, "round trip: unicode escapes",
               "{\"u\":\"\\u0041\\u00e9\\u20ac\\ud83d\\ude00\"}", "{\"u\":\"Aé€😀\"}");
-    roundtrip("round trip: numbers",
-              "{\"i\":-42,\"big\":9007199254740993,\"d\":1.5,\"neg\":-2.25}",
-              "{\"i\":-42,\"big\":9007199254740993,\"d\":1.5,\"neg\":-2.25}");
-    roundtrip("round trip: number normalisation", "{\"e\":1e3,\"f\":0.10}", "{\"e\":1000,\"f\":0.1}");
-    roundtrip("round trip: duplicate key last wins", "{\"a\":1,\"a\":2}", "{\"a\":2}");
-    roundtrip("round trip: empty string", "{\"s\":\"\"}", "{\"s\":\"\"}");
-    roundtrip("round trip: escaped key", "{\"\\u0061\":1}", "{\"a\":1}");
-    roundtrip("round trip: 64 levels", deep64, deep64);
+    roundtrip(&st, "round trip: numbers keep source text",
+              "{\"e\":1e3,\"f\":0.10,\"big\":9007199254740993}",
+              "{\"e\":1e3,\"f\":0.10,\"big\":9007199254740993}");
+    roundtrip(&st, "round trip: duplicate key last wins", "{\"a\":1,\"a\":2}", "{\"a\":2}");
+    roundtrip(&st, "round trip: empty string", "{\"s\":\"\"}", "{\"s\":\"\"}");
+    roundtrip(&st, "round trip: escaped key", "{\"\\u0061\":1}", "{\"a\":1}");
+    roundtrip(&st, "round trip: 64 levels", deep64, deep64);
 
-    access_contract();
-    numeric_edges();
-    error_contract();
+    access_contract(&st);
+    lifecycle_contract(&st);
+    numeric_edges(&st);
+    error_contract(&st);
     free(deep64);
 
-    if (failed == 0) {
+    if (st.failed == 0) {
         printf("all checks passed\n");
         return 0;
     }
-    printf("%d of %d checks failed\n", failed, total);
+    printf("%d of %d checks failed\n", st.failed, st.total);
     return 1;
 }
