@@ -93,6 +93,7 @@ ns-root = src
 ```
 
 - 两条都属 EXT-JSON-01，但 C1/C2 未落地，按指令**不提交、不丢弃**，保持工作区原样。
+- 同样的两行已存在于一个未并入 `main` 的本地提交 `f205c3d`（`chore(pkg): align ct.pkg with shared-store identity`）上；该提交被本地轻量 tag `backup/pre-s4-rollback` 指向。C1/C2 落地后是复用该提交还是重做，由 owner 决定，本轮不操作。
 - 该文件的头部注释仍写 `consumers import json::src::json` 与「`namespace` 键剥首段」，与 EXT-JSON-03 的目标形态不一致；待 C2 落地、`publisher`/`ns-root` 正式提交时一并订正，本轮不改。
 - 当前 `ct.pkg` 同时存在 `namespace = json` 与 `ns-root = src`，两者是否并存见 §四。
 
@@ -106,7 +107,8 @@ ns-root = src
 ## 五、登记时的本仓实际状态
 
 - 版本：`ct.pkg` 的 `version = 0.1.1`（未改动）。
-- tag：无。
-- 分支：`main`；工作区仅有 `ct.pkg` 一处未提交改动。
+- tag：存在 1 个**本地轻量** tag `backup/pre-s4-rollback`，指向未并入 `main` 的提交 `f205c3d`，属备份用途；它不是发布 tag，也不满足 EXT-JSON-04 的 annotated / 默认分支可达要求。本轮未新建 tag。
+- 分支：`main`；本地 `main` 比 `origin/main` 多本次文档提交，按指令未推送。
+- 工作区：仅有 `ct.pkg` 一处未提交改动（见 §三）。
 - `.git/refs/remotes/origin/main.lock`：登记时**不存在**（0 字节残留未发现），无需删除。
 - 本轮提交只含文档，不含 `ct.pkg`、不推送、不打 tag。
