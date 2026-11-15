@@ -279,6 +279,117 @@ static void array_write_contract(struct Stats *st)
     json_free(root);
 }
 
+static void write_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    Str ki = str_from("i");
+    Str kd = str_from("d");
+    Str kb = str_from("b");
+    Str kn = str_from("n");
+    Str ks = str_from("s");
+    Str kg = str_from("gone");
+    long long iv = 0;
+    double dv = 0.0;
+    int bv = 0;
+    int slen = -1;
+    char *sp;
+    int rc;
+
+    rc = json_decode("{\"gone\":1}", 10, &root);
+    check(st, rc == JSON_OK, "write fixture decodes");
+    if (rc != JSON_OK) return;
+
+    root.set_int(ki, -42);
+    root.set_double(kd, 2.5);
+    root.set_bool(kb, 1);
+    root.set_null(kn);
+    root.set_str(ks, "hi", 2);
+    check(st, json_as_int(member_cstr(root, "i"), &iv) == JSON_OK && iv == -42, "set_int writes an int64");
+    check(st, json_as_double(member_cstr(root, "d"), &dv) == JSON_OK && dv == 2.5, "set_double writes a double");
+    check(st, json_as_bool(member_cstr(root, "b"), &bv) == JSON_OK && bv == 1, "set_bool writes true");
+    check(st, json_tag(member_cstr(root, "n")) == JSON_TAG_NULL, "set_null writes null");
+    sp = json_as_str(member_cstr(root, "s"), &slen);
+    check(st, sp != 0 && slen == 2 && sp[0] == 'h', "set_str writes a string");
+    check(st, json_obj_len(root) == 6, "writes append six keys in total");
+
+    root.set_int(ki, 7);
+    check(st, json_obj_len(root) == 6, "overwriting a key keeps the object size");
+    check(st, json_as_int(member_cstr(root, "i"), &iv) == JSON_OK && iv == 7, "overwriting replaces the value");
+    {
+        int klen = -1;
+        char *k0 = json_obj_key_at(root, 0, &klen);
+        check(st, k0 != 0 && klen == 4, "overwriting keeps the key position");
+    }
+
+    root.remove(kg);
+    check(st, has_cstr(root, "gone") == 0, "remove drops the key");
+    check(st, json_obj_len(root) == 5, "remove shrinks the object");
+    check(st, has_cstr(root, "i") == 1, "remove keeps its neighbours");
+
+    ki.release();
+    kd.release();
+    kb.release();
+    kn.release();
+    ks.release();
+    kg.release();
+    json_free(root);
+}
+
+static void subscript_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef server;
+    JsonRef host;
+    char *text = "{\"server\":{\"host\":\"db.local\"}}";
+    char *out;
+    int slen = -1;
+    char *sp;
+    int rc;
+
+    rc = json_decode(text, (int)strlen(text), &root);
+    check(st, rc == JSON_OK, "subscript fixture decodes");
+    if (rc != JSON_OK) return;
+
+    server = root["server"];
+    check(st, json_tag(server) == JSON_TAG_OBJ, "v[\"k\"] reads a member");
+    host = server["host"];
+    sp = json_as_str(host, &slen);
+    check(st, sp != 0 && slen == 8, "a local handle carries the next subscript");
+
+    root["alias"] = server;
+    check(st, has_cstr(root, "alias") == 1, "v[\"k\"] = ref writes a member");
+    check(st, root.p->refs == 1, "a shared write does not change the root count");
+
+    out = json_encode(root);
+    check(st, out != 0 && strstr(out, "\"alias\":{\"host\":\"db.local\"}") != 0,
+          "a shared subtree is written once per occurrence");
+    free(out);
+    json_free(root);
+}
+
+static void cycle_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    Str k = str_from("self");
+    char *out;
+    int rc;
+
+    rc = json_decode("{}", 2, &root);
+    check(st, rc == JSON_OK, "cycle fixture decodes");
+    if (rc != JSON_OK) return;
+
+    root["self"] = root;
+    out = json_encode(root);
+    check(st, out == 0, "encoding a cycle answers 0");
+    check(st, json_last_error() == JSON_ERR_CYCLE, "a cycle reports JSON_ERR_CYCLE");
+    free(out);
+
+    root.remove(k);
+    k.release();
+    check(st, json_obj_len(root) == 0, "removing the back-edge breaks the cycle");
+    json_free(root);
+}
+
 static void numeric_edges(struct Stats *st)
 {
     JsonRef root = empty_ref();
@@ -377,6 +488,9 @@ int main(void)
     access_contract(&st);
     lifecycle_contract(&st);
     array_write_contract(&st);
+    write_contract(&st);
+    subscript_contract(&st);
+    cycle_contract(&st);
     numeric_edges(&st);
     error_contract(&st);
     free(deep64);
