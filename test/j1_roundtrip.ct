@@ -197,11 +197,11 @@ static void access_contract(struct Stats *st)
 
     arr = member_cstr(root, "arr");
     check(st, json_arr_len(arr) == 2, "array length is 2");
-    check(st, json_as_int(json_at(arr, 0), &iv) == JSON_OK && iv == 10, "at(0) is 10");
-    check(st, json_as_int(json_at(arr, 1), &iv) == JSON_OK && iv == 20, "at(1) is 20");
-    check(st, json_at(arr, 2).p == 0, "at(len) answers an empty handle");
-    check(st, json_at(arr, -1).p == 0, "at(-1) answers an empty handle");
-    check(st, json_at(root, 0).p == 0, "at on an object answers an empty handle");
+    check(st, json_as_int(arr.get_idx(0), &iv) == JSON_OK && iv == 10, "get_idx(0) is 10");
+    check(st, json_as_int(arr.get_idx(1), &iv) == JSON_OK && iv == 20, "get_idx(1) is 20");
+    check(st, arr.get_idx(2).p == 0, "get_idx(len) answers an empty handle");
+    check(st, arr.get_idx(-1).p == 0, "get_idx(-1) answers an empty handle");
+    check(st, root.get_idx(0).p == 0, "get_idx on an object answers an empty handle");
     check(st, member_cstr(arr, "x").p == 0, "member on an array answers an empty handle");
     check(st, member_cstr(root, null_key).p == 0, "member with a NULL key answers an empty handle");
 
@@ -239,6 +239,42 @@ static void access_contract(struct Stats *st)
         kp = json_obj_key_at(root, 7, &klen);
         check(st, kp != 0 && klen == 3, "key_at reports the byte length");
     }
+
+    json_free(root);
+}
+
+static void array_write_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef items;
+    JsonRef num = empty_ref();
+    long long iv = 0;
+    int rc;
+
+    rc = json_decode("{\"items\":[10,20,null]}", 22, &root);
+    check(st, rc == JSON_OK, "array fixture decodes");
+    if (rc != JSON_OK) return;
+    items = member_cstr(root, "items");
+
+    check(st, items.get_idx(0).p != 0, "get_idx(0) is a handle");
+    check(st, json_tag(items.get_idx(2)) == JSON_TAG_NULL, "a null element answers a handle");
+    check(st, items.get_idx(3).p == 0, "get_idx(len) is empty");
+    check(st, items.get_idx(-1).p == 0, "get_idx(-1) is empty");
+    check(st, root.get_idx(0).p == 0, "get_idx on an object is empty");
+
+    rc = json_decode("7", 1, &num);
+    check(st, rc == JSON_OK, "scalar fixture decodes");
+    items.push(num);
+    json_release(num);
+    check(st, json_arr_len(items) == 4, "push appends");
+    check(st, json_as_int(items.get_idx(3), &iv) == JSON_OK && iv == 7, "the pushed value is readable");
+
+    check(st, items.set_idx(3, items.get_idx(0)) == JSON_OK, "set_idx overwrites in range");
+    check(st, json_as_int(items.get_idx(3), &iv) == JSON_OK && iv == 10, "the overwrite is visible");
+    check(st, items.set_idx(4, items.get_idx(0)) == JSON_ERR_RANGE, "set_idx(len) is a range error");
+    check(st, items.set_idx(-1, items.get_idx(0)) == JSON_ERR_RANGE, "set_idx(-1) is a range error");
+    check(st, json_arr_len(items) == 4, "a rejected set_idx does not grow the array");
+    check(st, root.set_idx(0, items.get_idx(0)) == JSON_ERR_RANGE, "set_idx on an object is a range error");
 
     json_free(root);
 }
@@ -340,6 +376,7 @@ int main(void)
 
     access_contract(&st);
     lifecycle_contract(&st);
+    array_write_contract(&st);
     numeric_edges(&st);
     error_contract(&st);
     free(deep64);
