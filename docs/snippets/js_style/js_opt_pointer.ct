@@ -1,0 +1,33 @@
+/* (a) 今天可用（指针接收者） | 目标 11a：`?.` 在指针上 —— 字段链可用，NULL 落空状态。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"host\":\"db.local\"}}";
+    JsonRef doc;
+    JsonNode *root;
+    JsonNode *missing;
+    int tag;
+    int missing_tag;
+    int direct;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    /* 指针接收者：可选链可用 */
+    root = doc.p;
+    tag = root?.tag;
+
+    /* 缺键 → 空指针 → 可选链给 0（与 JSON null 的 tag=0 同值，需配合 has 区分） */
+    missing = doc["nope"].p;
+    missing_tag = missing?.tag;
+
+    /* 字段链后接可选链：可用 */
+    direct = doc.p?.tag;
+
+    printf("root?.tag=%d missing?.tag=%d fieldchain=%d\n", tag, missing_tag, direct);
+
+    json_free(doc);
+    return 0;
+}

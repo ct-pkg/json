@@ -1,0 +1,20 @@
+/* (c) 设计拒绝：可选下标的结果必须是 NULL 可表示类型 | 目标 12c：`?[` 在 JsonRef 指针上 —— 当前不编译。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"host\":\"db.local\"}}";
+    JsonRef doc;
+    JsonRef *rp;
+    JsonRef server;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    rp = &doc;
+    server = rp?["server"];      /* get 返回 JsonRef，无 NULL 表示 */
+    printf("ref pointer optional subscript tag=%d\n", json_tag(server));
+
+    json_free(doc);
+    return 0;
+}

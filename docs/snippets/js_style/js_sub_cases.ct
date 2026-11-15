@@ -1,0 +1,43 @@
+/* (a) 今天可用 | 目标 10：下标访问的四种真实情形 —— 读一层、读嵌套、缺键、越界。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"host\":\"db.local\"},\"items\":[1,2]}";
+    JsonRef doc;
+    JsonRef server;
+    JsonRef host;
+    JsonRef missing;
+    JsonRef arr;
+    JsonRef hit;
+    JsonRef oob;
+    int len = -1;
+    char *s;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    /* 读一层 */
+    server = doc["server"];
+    printf("level1 tag=%d\n", json_tag(server));
+
+    /* 读嵌套：两级链只在声明初始化/赋值右值位置可用 */
+    host = doc["server"]["host"];
+    s = json_as_str(host, &len);
+    printf("nested tag=%d host=%.*s\n", json_tag(host), len, s);
+
+    /* 缺键：空句柄，不是 null */
+    missing = doc["nope"];
+    printf("missing empty=%d tag=%d\n", missing.p == 0, json_tag(missing));
+
+    /* 越界：get_idx 返回空句柄，不崩 */
+    arr = doc["items"];
+    hit = arr.get_idx(1);
+    oob = arr.get_idx(2);
+    printf("index hit empty=%d tag=%d; oob empty=%d tag=%d\n",
+           hit.p == 0, json_tag(hit), oob.p == 0, json_tag(oob));
+
+    json_free(doc);
+    return 0;
+}

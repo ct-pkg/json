@@ -1,0 +1,16 @@
+/* (c) 设计拒绝：可选方法调用不支持 | 目标 11c：`?.` 后面直接调 Map 的方法 —— 当前不编译。 */
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+    Map<Str, Str> m = {};
+    Map<Str, Str> *mp = &m;
+    int n;
+
+    n = mp?.len();               /* 可选链后接方法调用：编译器要求先赋给变量 */
+    printf("optional map method n=%d\n", n);
+
+    m.release();
+    return 0;
+}

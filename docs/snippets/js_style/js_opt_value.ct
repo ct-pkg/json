@@ -1,0 +1,18 @@
+/* (c) 设计拒绝：可选链要求指针接收者 | 目标 11b：`?.` 用在 JsonRef 值上 —— 当前不编译。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"host\":\"db.local\"}}";
+    JsonRef doc;
+    JsonRef server;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    server = doc?.server;        /* JsonRef 是值类型，编译器要求指针接收者 */
+    printf("value optional tag=%d\n", json_tag(server));
+
+    json_free(doc);
+    return 0;
+}

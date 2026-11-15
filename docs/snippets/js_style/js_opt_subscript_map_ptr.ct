@@ -1,0 +1,31 @@
+/* (a) 今天可用（指针接收者 + 指针/标量结果） | 目标 12a：`?[` 在 Map 指针上 —— 空指针返回 0。 */
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+    Map<Str, Str> m = {};
+    Map<Str, Str> *mp = &m;
+    Map<Str, Str> *null_mp = 0;
+    Str key = str_from("host");
+    Str val = str_from("db.local");
+    Str other = str_from("nope");
+    Str *got;
+    Str *miss;
+    Str *null_got;
+
+    m.put(key, val);
+
+    got = mp?[key];              /* 命中 */
+    miss = mp?[other];           /* 缺键 → 0 */
+    null_got = null_mp?[key];    /* 空指针 → 0，不解引用 */
+
+    printf("map ptr got=%d len=%d miss=%d null=%d\n",
+           got != 0, got == 0 ? -1 : got->len, miss == 0, null_got == 0);
+
+    key.release();
+    val.release();
+    other.release();
+    m.release();
+    return 0;
+}

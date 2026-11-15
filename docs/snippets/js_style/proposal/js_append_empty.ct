@@ -1,0 +1,30 @@
+/*
+ * (提案 PH-61，当前不可运行) 目标 14：空方括号追加 `v[] = x`。
+ *
+ * 这是**目标形态**，不是既有能力：CT v0.53.0 的词法/语法还没有空方括号下标，
+ * 构建时停在 `expected an expression`。本文件放在 proposal/ 下，避免与可运行样例混排。
+ * 今天等价的写法是 `v.push(x)`，见 ../js_append_push.ct。
+ */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"items\":[1]}";
+    JsonRef doc;
+    JsonRef items;
+    JsonRef two;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    if (json_decode("2", 1, &two) != JSON_OK) return 1;
+
+    items = doc["items"];
+    items[] = two;               /* 提案形态：当前不编译 */
+
+    printf("len=%d\n", json_arr_len(items));
+
+    json_release(two);
+    json_free(doc);
+    return 0;
+}
