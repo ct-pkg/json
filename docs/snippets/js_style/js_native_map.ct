@@ -1,0 +1,21 @@
+/* (a) 今天可用（Str 变量下标） | 目标 9a：标准 Map 用 Str 变量做下标。 */
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+    Map<Str, Str> m = {};
+    Str key = str_from("host");
+    Str val = str_from("db.local");
+    Str k2 = str_from("host");
+    m.put(key, val);
+    key.release();
+    val.release();
+
+    Str *got = m[k2];
+    printf("len=%d has=%d null=%d got=%.*s\n",
+           m.len(), m.has(k2), got == 0, got == 0 ? 0 : got->len, got == 0 ? "" : got->data);
+    k2.release();
+    m.release();
+    return 0;
+}

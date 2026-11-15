@@ -1,0 +1,18 @@
+/* (b) std 容器需要字面量下标支持；理想写法受语言无转换所限 | 目标 9b：标准 Map 用字符串字面量做下标 —— 照现状记录（不编译）。 */
+#include <stdio.h>
+#include <string.h>
+
+int main(void)
+{
+    Map<Str, Str> m = {};
+    Str key = str_from("host");
+    Str val = str_from("db.local");
+    m.put(key, val);
+    key.release();
+    val.release();
+
+    Str *got = m["host"];
+    printf("null=%d\n", got == 0);
+    m.release();
+    return 0;
+}

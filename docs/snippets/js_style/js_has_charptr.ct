@@ -1,0 +1,14 @@
+/* (b/c) 库可加 has_cstr；理想写法受语言无重载所限 | 目标 8a：doc.has("k") —— 照现状记录（char* 键不编译）。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"host\":\"h\"}";
+    JsonRef doc;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    printf("has=%d\n", doc.has("host"));
+    json_free(doc);
+    return 0;
+}

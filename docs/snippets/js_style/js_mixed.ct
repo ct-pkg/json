@@ -1,0 +1,25 @@
+/* (a) get_idx 可用；arr[0] 编译通过但静默空句柄（语言层） | 目标 4：arr[0].name 与 arr[0]["name"]；数字下标静默空句柄。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"items\":[{\"name\":\"a\"}]}";
+    JsonRef doc;
+    JsonRef arr;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    arr = doc["items"];
+
+    JsonRef item = arr[0];
+    JsonRef name = arr[0]["name"];
+    printf("arr[0] empty=%d tag=%d\n", item.p == 0, json_tag(item));
+    printf("arr[0][name] empty=%d tag=%d\n", name.p == 0, json_tag(name));
+
+    JsonRef real = arr.get_idx(0);
+    printf("get_idx(0) tag=%d\n", json_tag(real));
+    JsonRef real_name = real["name"];
+    printf("real[name] tag=%d\n", json_tag(real_name));
+    json_free(doc);
+    return 0;
+}

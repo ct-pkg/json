@@ -1,0 +1,19 @@
+/* (a) 今天可用（声明初始化位置） | 目标 3a：两级链读 —— 声明初始化位置可用。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"host\":\"db.local\",\"port\":8080}}";
+    JsonRef doc;
+    int len = -1;
+    char *host;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    JsonRef h = doc["server"]["host"];
+    host = json_as_str(h, &len);
+    printf("chain read tag=%d host=%.*s\n", json_tag(h), len, host);
+    json_free(doc);
+    return 0;
+}

@@ -1,0 +1,23 @@
+/* (a) 今天可用 | 目标 2：单层下标读写 —— 今天可用。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"port\":8080}";
+    JsonRef doc;
+    JsonRef port;
+    char *out;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    if (json_decode("9090", 4, &port) != JSON_OK) return 1;
+
+    printf("read tag=%d\n", json_tag(doc["port"]));
+    doc["port"] = port;
+    json_release(port);
+    out = json_encode(doc);
+    printf("write %s\n", out);
+    free(out);
+    json_free(doc);
+    return 0;
+}

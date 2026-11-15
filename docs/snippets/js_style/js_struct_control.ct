@@ -1,0 +1,25 @@
+/* (a) 静态 struct 的点访问/算术/打印可用（候选 C 证据） | 对照：静态 struct 的点访问、算术、打印 —— 今天可用（候选形态 C 的证据）。 */
+#include <stdio.h>
+#include <string.h>
+
+struct Server {
+    Str host;
+    int port;
+}
+
+struct Doc {
+    Server server;
+}
+
+int main(void)
+{
+    Doc doc;
+    doc.server.host = str_from("db.local");
+    doc.server.port = 8080;
+    printf("dot %.*s:%d\n", doc.server.host.len, doc.server.host.data, doc.server.port);
+    doc.server.port = doc.server.port + 1;
+    printf("arith %d\n", doc.server.port);
+    printf("print %s\n", doc.server.host.data);
+    doc.server.host.release();
+    return 0;
+}

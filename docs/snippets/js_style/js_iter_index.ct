@@ -1,0 +1,30 @@
+/* (a) 今天可用（下标循环） | 目标 7b：用下标循环迭代数组与对象 —— 今天可用。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"tags\":[\"a\",\"b\"],\"port\":1}";
+    JsonRef doc;
+    int i;
+    int n;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    JsonRef tags = doc["tags"];
+    n = json_arr_len(tags);
+    for (i = 0; i < n; i = i + 1) {
+        int len = -1;
+        char *s = json_as_str(tags.get_idx(i), &len);
+        printf("arr[%d]=%.*s\n", i, len, s);
+    }
+
+    n = json_obj_len(doc);
+    for (i = 0; i < n; i = i + 1) {
+        int klen = -1;
+        char *k = json_obj_key_at(doc, i, &klen);
+        printf("key[%d]=%.*s\n", i, klen, k);
+    }
+    json_free(doc);
+    return 0;
+}

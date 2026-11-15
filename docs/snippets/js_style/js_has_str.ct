@@ -1,0 +1,18 @@
+/* (a) 今天可用 | 目标 8b：doc.has(Str) —— 今天可用。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"host\":\"h\"}";
+    JsonRef doc;
+    Str k = str_from("host");
+    Str no = str_from("nope");
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    printf("has(host)=%d has(nope)=%d\n", doc.has(k), doc.has(no));
+    k.release();
+    no.release();
+    json_free(doc);
+    return 0;
+}

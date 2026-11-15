@@ -1,0 +1,18 @@
+/* (c) 语言层缺口：定制下标写要求左值接收者 | 目标 3b：两级链写 —— 照现状记录（不编译）。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"port\":8080}}";
+    JsonRef doc;
+    JsonRef port;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    if (json_decode("9090", 4, &port) != JSON_OK) return 1;
+
+    doc["server"]["port"] = port;
+    json_release(port);
+    json_free(doc);
+    return 0;
+}

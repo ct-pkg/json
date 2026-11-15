@@ -1,0 +1,17 @@
+/* (c) 语言层缺口：无容器迭代协议 | 目标 7a：原生 for-in / foreach 迭代容器 —— 照现状记录。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"tags\":[\"a\",\"b\"]}";
+    JsonRef doc;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    JsonRef tags = doc["tags"];
+    for (JsonRef e in tags) {
+        printf("%d\n", json_tag(e));
+    }
+    json_free(doc);
+    return 0;
+}

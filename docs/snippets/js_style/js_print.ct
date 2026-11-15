@@ -1,0 +1,14 @@
+/* (c) 语言层缺口：无格式化协议；%s 编译通过但输出错 | 目标 6：把结果直接交给 printf —— 照现状记录。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    char *text = "{\"host\":\"db.local\"}";
+    JsonRef doc;
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    printf("host=%s\n", doc["host"]);
+    json_free(doc);
+    return 0;
+}

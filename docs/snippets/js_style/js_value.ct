@@ -1,0 +1,14 @@
+/* (c) 语言层缺口：无运算符重载/取值转换 | 目标写法 5：结果当普通值参与运算 —— 照现状记录。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    JsonRef doc;
+    if (json_decode("{\"port\":8080}", 12, &doc) != JSON_OK) return 1;
+    int next = doc["port"] + 1;
+    printf("%d\n", next);
+    json_free(doc);
+    return 0;
+}

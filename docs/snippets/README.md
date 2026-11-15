@@ -130,3 +130,7 @@ ctc: 1 error(s) generated
 | `arr.get_idx(i)` | 可用，越界返回空句柄 | — |
 
 写样例期间未发现本包实现问题；`issues/` 下三条均为语言层上游问题。
+
+## 8. JS 风格使用形态（评估样例）
+
+`docs/snippets/js_style/` 覆盖点访问、链式写、值语义、打印、迭代与字面量键，每条文件头标注 **(a)** 今天可用 / **(b)** 只需改库或 std 接口 / **(c)** CT 语言缺能力。评估结论见 [ct-json-0.1.0-js-style-eval.md](../review/ct-json-0.1.0-js-style-eval.md)。

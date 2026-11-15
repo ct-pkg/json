@@ -1,0 +1,15 @@
+/* (c) 语言层缺口：无属性访问协议 | 目标写法 1：点访问 doc.server.host —— 照现状记录（当前不编译）。 */
+#include <stdio.h>
+#include <string.h>
+import json;
+
+int main(void)
+{
+    JsonRef doc;
+    if (json_decode("{\"server\":{\"host\":\"db.local\"}}", 31, &doc) != JSON_OK) return 1;
+    JsonRef server = doc.server;
+    JsonRef host = doc.server.host;
+    printf("%d %d\n", json_tag(server), json_tag(host));
+    json_free(doc);
+    return 0;
+}
