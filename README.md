@@ -20,7 +20,7 @@
 ## As a package (0.1.1)
 
 ct-json is an external package, not a CT built-in. Build path is the L2 `ct` tool
-(`ctc`, the L0 compiler, cannot parse `Str` fields).
+(`ctc`, the L0 compiler, cannot parse generic declarations such as `Map<...>`).
 
 ```sh
 # in the consuming project

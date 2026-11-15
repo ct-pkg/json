@@ -29,7 +29,7 @@ $ echo $?
 ctc: cannot resolve import 'json/json'
 ```
 
-另：报告里 `ctc -I src src/json.h.ct` 报 `src/json.h.ct:84:8: error: expected a field name`（第 84 行 `Map<Str, int> *index;`）。经三种方式复现（`ctc` 直编 / `ct build` / 作为被 import 的包单元），结论是 **`ctc`（L0）不认 `Str` 字段**，不是包写法问题；最小探针 `Map<char *, int>` 与 `Str *s` 均可编，换成 `Map<Str, int>` 即报同一错。
+另：报告里 `ctc -I src src/json.h.ct` 报 `src/json.h.ct:84:8: error: expected a field name`（第 84 行 `Map<Str, int> *index;`）。经三种方式复现（`ctc` 直编 / `ct build` / 作为被 import 的包单元），结论是 **`ctc`（L0）不支持带泛型实参的声明**（`Map<...>` / `Vec<...>`），与 `Str` 无关：探针 `struct A { Map<char *, int> *m; }` 报同一错（1:15），`struct B { Str *s; }` 与 `struct H { Str s; }` 均通过；`ct build` 可编（库单元仅缺 `_main`）。
 
 ## 期望行为
 

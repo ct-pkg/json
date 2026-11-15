@@ -63,16 +63,24 @@ $ /tmp/jsongate | diff - json.expected.out
 
 ### 5.1 错误定性：`ctc -I src src/json.h.ct` 的 `expected a field name`
 
-结论：**不是包自身写法/类型问题，也不是 `-I` / namespace / 单元位置问题；是 `ctc`（L0）不支持 `Str` 字段**。同一条代码用 L2 `ct build` 可编。
+结论：**不是包自身写法/类型问题，也不是缺 include、缺 namespace 或单元位置问题；是 `ctc`（L0）不支持带泛型实参的声明**（`Map<...>` / `Vec<...>`），**与 `Str` 无关**。同一份代码用 L2 `ct build` 可编，作为被 import 的包单元也正常。
 
-| 复现方式 | 命令 | 结果 |
+| 复现方式 | 命令 | 原始输出 / 结果 |
 | --- | --- | --- |
-| ctc 直编（报告里的方式） | `ctc src/json.h.ct -I src` | `src/json.h.ct:84:8: error: expected a field name`；第 84 行是 `Map<Str, int> *index;` |
-| 包内既有构建方式（L2） | `ct build src/json.h.ct -I src` | 编译通过（仅链接失败：`_main` 未定义，属预期） |
-| 作为被 import 的包单元（L2） | `ct install` 后 `ct build -I vendor/json main.ct`，`main.ct` 内 `import json::src::json;` | 编译并运行成功（`consumer fails=0`，exit 0） |
-| 最小探针 | `ctc` 编 `struct X { Map<char *, int> *m; }` / `struct Y { Str *s; }` | 前两者过；把字段换成 `Map<Str, int> *` 即报同一条错 |
+| ctc 直编（报告里的方式） | `ctc src/json.h.ct -I src` | `ctc: warning: -I is ignored by compile mode; imports require 'ct build'`<br>`src/json.h.ct:84:8: error: expected a field name`（rc=1）；第 84 行是 `Map<Str, int> *index;` |
+| 包内既有构建方式（L2） | `ct build src/json.h.ct -I src -o /tmp/json_unit` | 生成 C 并调用 `cc` 成功，仅链接失败：`Undefined symbols for architecture arm64: "_main"`（库单元无 `main`，属预期，rc=1） |
+| 作为被 import 的包单元（L2） | `ct install` 后 `ct build -I vendor/json main.ct`，`main.ct` 内 `import json::src::json;` | 编译运行成功：`consumer fails=0`（rc=0） |
 
-即触发条件是「`ctc` 遇到 `Str` 作泛型实参/字段」，与 `Map<Str,int>` 在 `src/json.h.ct` 的写法无关。构建路径口径已写进 `ct.pkg` 注释：**只支持 L2 `ct`，`ctc` 不是受支持路径**。
+最小探针（`ctc` 直编，各一条）：
+
+| 探针 | 结果 |
+| --- | --- |
+| `struct A { Map<char *, int> *m; };` | `probe_a.ct:1:15: error: expected a field name`（rc=1） |
+| `struct E { Vec<int> *v; };` | `probe_e.ct:1:15: error: expected a field name`（rc=1） |
+| `struct B { Str *s; };` | rc=0 |
+| `struct H { Str s; };` | rc=0 |
+
+`Map<char *, int>` 与 `Map<Str, int>` 报同一条错、位置也相同（`<` 处），而 `Str` 字段两种写法都过——所以触发条件是**声明里出现泛型实参**，不是键类型、不是字段名、不是 `-I`。构建路径口径已写进 `ct.pkg` 注释：**只支持 L2 `ct`，`ctc` 不是受支持路径**。
 
 ### 5.2 消费失败的真正原因与修复
 

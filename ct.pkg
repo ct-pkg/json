@@ -1,6 +1,6 @@
 # ct-pkg/json - a reference-counted JSON tree for CT.
-# Toolchain: the L2 `ct` command. `ctc` (L0) cannot parse the `Str` / generic
-# field types this unit uses, so it is not a supported build path.
+# Toolchain: the L2 `ct` command. `ctc` (L0) cannot parse generic declarations
+# (`Map<...>` / `Vec<...>`), so it is not a supported build path.
 # Units live under src/; consumers import `json::src::json` after `ct install`,
 # which emits `-I vendor/json` (the `namespace` key strips the first segment).
 name = json
