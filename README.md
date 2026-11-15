@@ -9,12 +9,13 @@
 > encode time. See [ADR-0001](docs/adr/0001-tree-data-model.md),
 > [ADR-0002](docs/adr/0002-mutable-scope.md), [ADR-0003](docs/adr/0003-reference-sharing.md),
 > [ADR-0004](docs/adr/0004-number-representation.md), [ADR-0005](docs/adr/0005-cycle-handling.md),
-> [ADR-0006](docs/adr/0006-public-refcount.md). Access is a transitional object-style call
-> (`doc.member(...)`); the target is `data.server.port` / `data["server"]` / `items[0].name`
-> once CT has subscript syntax ([ADR-0007](docs/adr/0007-js-style-access.md)). The tree model
-> and the write surface are not implemented yet. The zero-allocation read-only view described
-> below is the current 0.1.0 implementation and is superseded; this README documents what
-> exists, not the decided target.
+> [ADR-0006](docs/adr/0006-public-refcount.md). Access uses single-level string subscript
+> (`v["server"]`, [ADR-0007](docs/adr/0007-js-style-access.md)); numeric index uses
+> `get_idx(i)` and `v[0]` is unsupported in 0.1.0. Keys are `Str` (deep-copied on insert);
+> containers release their elements. The tree model and the write surface are not
+> implemented yet. The zero-allocation read-only view described below is the current
+> 0.1.0 implementation and is superseded; this README documents what exists, not the
+> decided target.
 
 A single CT file that validates JSON, exposes a read-only view over the caller's
 text, and serializes values back out. It allocates nothing, owns nothing, and
@@ -139,10 +140,10 @@ arithmetic, or pretty printing.
 > 见 [ADR-0001](docs/adr/0001-tree-data-model.md)、[ADR-0002](docs/adr/0002-mutable-scope.md)、
 > [ADR-0003](docs/adr/0003-reference-sharing.md)、[ADR-0004](docs/adr/0004-number-representation.md)、
 > [ADR-0005](docs/adr/0005-cycle-handling.md)、[ADR-0006](docs/adr/0006-public-refcount.md)。
-> 访问目前是过渡的面向对象调用（`doc.member(...)`）；最终形态是 `data.server.port`、
-> `data["server"]`、`items[0].name` 这类下标/点号调用（[ADR-0007](docs/adr/0007-js-style-access.md)）。
-> 树模型与写入面均未实现。下文的零分配只读视图是 0.1.0 现有实现，已被取代；本文只描述
-> 「已有」，不描述「已决定」。
+> 访问用单层字符串下标（`v["server"]`，[ADR-0007](docs/adr/0007-js-style-access.md)）；
+> 数字下标用 `get_idx(i)`，0.1.0 不支持 `v[0]`。键为 `Str`，插入时深拷贝；容器负责释放
+> 元素。树模型与写入面均未实现。下文的零分配只读视图是 0.1.0 现有实现，已被取代；
+> 本文只描述「已有」，不描述「已决定」。
 
 一个 CT 文件：校验 JSON、在调用方文本上暴露只读视图、再把值序列化回去。全程
 不分配内存、不持有所有权、不建 DOM。解析后的“文档”就是原始字节加上第一个错误的

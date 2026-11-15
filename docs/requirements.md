@@ -25,16 +25,16 @@
 
 ## 1 一句话需求
 
-把一段已在内存里的 JSON 字节严格校验后，既能暴露为零分配的只读视图，也能解码成 CT 原生 `Map` / `Vec` 容器；两种模型都能无损编码回 JSON 字节。错误以稳定错误码 + 字节偏移 + 1-based 行列报告。不引入自造 DOM、流式解析、注释与自定义序列化钩子。
+把一段已在内存里的 JSON 字节严格校验后解码为**可读写的树**（唯一公开数据模型），再无损编码回 JSON 字节；零分配只读视图降级为后续可选的只读层，不影响公开 API。错误以稳定错误码报告；0.1.0 不提供行列与消息。不引入流式解析、注释与自定义序列化钩子。
 
-> 注：两种模型是并存还是二选一，取决于 Q-01；在 Q-01 裁定前，D 组条目不进入实现排期。
+> 注：Q-01 已于 2026-11-15 裁定为树模型（ADR-0001），D 组按 `docs/spec/ct-json-0.1.0.md` 实施；原「视图 / 树二选一」不再成立。
 
 ## 2 使用边界
 
 | 角色 | 说明 |
 | --- | --- |
 | 上游 | 整段已在内存的字节（`const char *` + `int len`）；不负责网络、文件、分片、编码转换 |
-| 下游 | 只读视图 API（配置读取、字段探测）；树模型 API（需要遍历/改写/跨模块传递的场景）；`JsonOut` 追写器 |
+| 下游 | 树 API（读取、遍历、改写、跨模块传递）；`JsonOut` 追写器；零分配只读视图仅作后续可选层 |
 | 不属于本包 | HTTP / SSE 传输、文件读取、schema 校验、业务语义、日志格式化、数据库映射、JSON Patch |
 
 ## 3 能力现状清单
@@ -134,14 +134,14 @@
 
 | 编号 | 需求（要解决的问题） | 验收判据 | 状态 | 依据 / 阻塞 |
 | --- | --- | --- | --- | --- |
-| R-D-01 | decode 的目标模型必须是 CT 原生容器，不得自造 DOM 类 | ① 对象节点类型为 `Map<char*, JsonVal>`，数组为 `Vec<JsonVal>`（或 Q-07 裁定的等价原生容器）；② 遍历 `Map` / `Vec` 即可读到全部键值与元素，无需专用 getter 树；③ 不存在 `JsonNode.new()` / `children()` 一类 DOM API | 需新增 | 用户职责定位；`Vec.h.ct:37-54`；`bindings-and-patterns.md:10-79` |
+| R-D-01 | decode 的目标模型已定为树（ADR-0001），不得再引入第二套公开模型 | ① 对象节点为 `JsonObj`（`Str` 键、保插入序），数组为 `JsonArr`；② 节点为 `JsonNode` + `JsonRef` 句柄，不另包隐藏节点的 DOM 包装；③ 零分配视图仅作后续可选只读层，不影响公开 API | 已改（ADR-0001 / 新规范） | Q-01 已定；`docs/spec/ct-json-0.1.0.md` §二 |
 | R-D-02 | 异构值必须有判别，且判别值能映射到现有 JSON kind | ① `JsonVal` 为 `{tag, union}`，tag 覆盖 null/bool/int/double/string/array/object 七类；② 表驱动：7 类输入 → tag 与 payload 断言，且能映射到 `JSON_*` kind；③ `union` 不带 trait（语言限制）；④ 标量节点不额外堆分配 | 需新增 | `language-spec.md:755-777`；`bindings-and-patterns.md:19-28` |
-| R-D-03 | 树的所有权与释放规则必须唯一且可验证 | ① README 写明：Map key 不复制、必须活到 map 释放；`JsonVal` 无 `retain`/`release`，`Map`/`Vec` 释放不级联；② 提供 `json_free(JsonVal)` 递归释放；③ ASan/LSan 下构造→释放 0 泄漏；④ 负例：漏释放必须报泄漏 | 需新增 | `Vec.h.ct:53-56`、`187-207`、`517-537`；`bindings-and-patterns.md:53-56` |
-| R-D-04 | 只读视图与树模型的关系必须定死 | 口径 A：两者并存，共享同一词法校验，视图为轻量路径；口径 B：树为唯一公开模型，视图降为内部；口径 C：视图为唯一模型（D 组不成立）。验收按裁定：同一输入两 API 的值集合相等，或只有一套公开 API | 待确认 | Q-01；`README.md:91-110`；`DECISIONS.md:14-23`、`69-75` |
-| R-D-05 | 数字在树中的落点必须唯一 | ① 无小数/指数且在 int64 范围 → int64；② 含小数/指数或超 int64 → double 或报错（按 Q-04）；③ `-0` 的符号保留或归零需断言；④ `1e999` 行为与视图 API 一致 | 需新增 | Q-04；`json.ct:1234-1383` |
-| R-D-06 | 字符串在树中必须保留长度与内嵌 NUL；键的限制必须明确 | ① 值用 `Str`（`{data,len}`）或等价长度前缀类型，`"a\u0000b"` 的 len=3 且字节相等；② 键仍为 `char*`，含 `\u0000` 的键按 Q-05 裁定拒绝或转义；③ 输出时用 R-B-04 的长度 API 往返 | 需新增 | `language-spec.md:2255`；`Vec.h.ct:216-258` |
-| R-D-07 | 缺键与 null 值必须可区分 | ① `map.get("absent") == NULL`；② `map.get("k")` 非 NULL 且 `tag==NULL` 表示显式 null；③ 断言两者在读取 API 上不可混淆 | 需新增 | `Vec.h.ct:260-269` |
-| R-D-08 | 重复键在树模型中的位置与值必须固定 | ① last-wins；② Map 覆盖原位（首次出现位置）或移到末尾，二选一并断言；③ 与视图 `member` 的 last-wins 一致 | 需新增 | `Vec.h.ct:232-239`；`json.ct:1019-1021` |
+| R-D-03 | 树的所有权与释放规则必须唯一且可验证 | ① 写入共享引用，引用计数（ADR-0003/0006）；② 键为 `Str`，插入深拷贝、容器持有；③ 容器负责释放元素：`JsonObj`/`JsonArr` 的 Drop 循环 `json_release`，只释放 `[0,len)`，再释放数组；④ `json_free` 是 release 一次，计数归零才释放；⑤ ASan/LSan 下构造→释放 0 泄漏（LSan 环境缺口如实登记） | 已改（ADR-0003/0006、Q-4 A） | 新规范 §3.7；`docs/spec/ct-json-0.1.0-rewrite-notes.md` 第 27 条 |
+| R-D-04 | 只读视图与树模型的关系必须定死 | 已定口径 B：树为唯一公开模型，零分配视图降级为后续可选只读层，不影响公开 API（ADR-0001） | **已定**（2026-11-15，ADR-0001） | Q-01 已裁；`docs/adr/0001-tree-data-model.md` |
+| R-D-05 | 数字在树中的落点必须唯一 | 已定双轨（ADR-0004）：解析来的数值保留原文并原样回吐；程序写入分 int64 / double 两支；写入浮点的编码格式待定（Q-6） | 已改（ADR-0004） | 新规范 §2.4 |
+| R-D-06 | 字符串在树中必须保留长度与内嵌 NUL；键的限制必须明确 | ① 值用 `Str`；`"a\u0000b"` 的 len=3 且字节相等；② 键一律 `Str`（Q-1 裁定 A），插入深拷贝、可含 `\u0000`；③ `get`/`set` 的 `char *` 仅作下标协议适配 | 已改（Q-1 A） | 新规范 §七；`strkey` / `pStrKey` 实测 |
+| R-D-07 | 缺键与 null 值必须可区分 | ① `get` 缺键返回 `p == NULL` 的空句柄；② `has(Str)` 显式判在不在；③ null 值返回有效句柄且 `json_tag` 为 `JSON_TAG_NULL` | 已改 | 新规范 §3.2 |
+| R-D-08 | 重复键在树模型中的位置与值必须固定 | ① last-wins；② 覆盖时保留首次出现位置、只换值；③ 与视图 `member` 的 last-wins 一致 | 需新增 | 新规范 §3.3 |
 
 ### 4.5 E 组：工程与交付
 
@@ -158,7 +158,7 @@
 
 | 编号 | 冲突 | 证据 | 影响 | 状态 |
 | --- | --- | --- | --- | --- |
-| X-01 | **数据模型路线**：需求口述“decode 落到原生 `Map`/`Vec`”，现有实现是零分配只读视图，且既有文档明确“不做 DOM” | 需求侧：本次任务书；现状：`README.md:93-95`、`108-110`，`DECISIONS.md:14-23`、`69-75`；外部决策：`json-package-refactor.md:8-9`（“不实现可变 DOM；需要建树…直接用 cJSON”）、`:82`；`ct-pkg-agent-runtime.md:163`（保持“样例”定位） | 若选树模型：D 组全部成立，但包定位、内存模型、README、`DECISIONS.md`、`ct.pkg` 描述都要改；若选视图：D 组整体作废，B-06 作废，本文降级为“现状需求固化” | **待 Q-01** |
+| X-01 | **数据模型路线**：需求口述“decode 落到原生 `Map`/`Vec`”，现有实现是零分配只读视图，且既有文档明确“不做 DOM” | 需求侧：本次任务书；现状：`README.md:93-95`、`108-110`，`DECISIONS.md:14-23`、`69-75`；外部决策：`json-package-refactor.md:8-9`（“不实现可变 DOM；需要建树…直接用 cJSON”）、`:82`；`ct-pkg-agent-runtime.md:163`（保持“样例”定位） | 若选树模型：D 组全部成立，但包定位、内存模型、README、`DECISIONS.md`、`ct.pkg` 描述都要改；若选视图：D 组整体作废，B-06 作废，本文降级为“现状需求固化” | **已定**：树为唯一公开模型（ADR-0001，2026-11-15）；视图降为可选只读层 |
 | X-02 | **许可来源不一致**：本包声明 GPL-3.0-only 并附 GPLv3 全文，但代码来自 `ct-lang/examples/json/`，上游明确 `examples/` 为 MIT | `ct.pkg:5`；`LICENSE:1-3`；`DECISIONS.md:3`；`ct-lang/LICENSE.EXCEPTION:28-46`（Copyright (c) 2026 Sam X. Xu） | 改 MIT 有据，但需版权人确认；未裁定前不应发布索引；静态链入闭源 Agent 的义务见 Q-02 | **待 Q-02** |
 | X-03 | **包定位不一致**：README 定位“配置/小报文”，外部提案称“迁出 examples 不等于可对外承诺”，本次任务要求“需求先行 + 正式交付” | `README.md:112-117`；`json-package-refactor.md:17`；`ct-pkg-agent-runtime.md:163` | 影响版本承诺（R-E-04）、是否建 CHANGELOG、是否冻结 API；不影响单条实现判据 | **待 Q-06** |
 
@@ -170,7 +170,7 @@
 | --- | --- |
 | 流式 / 增量 / SAX 解析、回调驱动的事件流 | `json-package-refactor.md:83`；`README.md:112-117` |
 | 注释、尾逗号、单引号、未加引号键、`NaN` / `Infinity` 字面量 | 严格 RFC 8259；`json.ct:267-314`、`207-224` |
-| 可变 DOM：专用 DOM 类、节点 setter、深拷贝 API | `DECISIONS.md:69-75`；`json-package-refactor.md:82`。注意：原生 `Map`/`Vec` 本身的可变性由调用方直接使用，本包不另包一层 DOM |
+| 可变 DOM：专用 DOM 类、节点 setter、深拷贝 API | **已废止**：写入与修改已由 ADR-0002 纳入范围，节点 setter 见新规范 §3.3。仍不做：把节点藏进 DOM 包装、额外深拷贝 API |
 | 美化输出 / 缩进 / 键排序 / 键去重策略 | `README.md:108-110` |
 | JSON Schema 校验、业务类型映射、JSON Patch / Pointer / Path 查询 | 本包只做词法与结构 |
 | 自定义序列化钩子、反射、注册类型、`toJSON` 回调 | 用户明确排除；CT 也无运行时反射（见 §7） |
@@ -189,7 +189,7 @@
 | --- | --- | --- | --- |
 | `trait` + `impl` + `use Trait` | 现有 `Json` / `JsonWrite` / `JsonValue` 分发 | 已支持（`json.ct:76-135`、`884-918`） | 已支持 |
 | `loop(n)`（Phase 22，v0.22.0） | `as_double` 指数缩放 | 已支持（`json.ct:1366-1377`；`roadmap.md:38`） | 已支持 |
-| 泛型 struct + `Vec` / `Map`（Phase 29，v0.30.0） | 树模型的对象/数组节点 | 已支持（`Vec.h.ct:37-54`；`roadmap.md:45`） | 已支持 |
+| 泛型 struct + `Vec` / `Map`（Phase 29，v0.30.0） | 树模型的对象/数组节点 | 已支持，但必须写类型实参（裸 `Map *` 在 C 层报错）；泛型容器对用户 struct 不生成元素 drop（`(void)e;`），元素释放须由具体容器显式循环 | 已支持（限制见新规范 §3.7） |
 | `union` + `int tag` + `Map<char*, struct>` | 异构 JSON 值的官方配方 | 已支持（`language-spec.md:755-777`；`bindings-and-patterns.md:10-79`） | 已支持 |
 | `Str` 长度前缀字符串（Phase 36，v0.36.0） | 保留内嵌 NUL 的字符串值 | 已支持（`language-spec.md:2255`；`roadmap.md:52`） | 已支持 |
 | 运行时反射 / 任意类型遍历 | 泛型“任意 Map/Vec 直接编码” | 不支持 | **软阻塞**：encode 只对 `Map<char*,JsonVal>` / `Vec<JsonVal>` 等具体实例具名（R-B-06） |
@@ -197,6 +197,8 @@
 | 借用检查 | 防止视图/树指针逃逸 | 不支持 | **软阻塞**：契约 + 负例（R-D-03、R-E-05） |
 
 **结论：按本文口径，CT 语言硬阻塞 0 条。** 软阻塞 3 条，均有不改语言的绕行方案。另有 2 条**非语言硬阻塞**：Q-01（数据模型路线）、Q-02（许可），未裁定前 D 组与发布动作不得开工。
+
+> 上表基于 CT v0.44.1；v0.52.0 复评后：Q-01 已定（ADR-0001），`v[0]` 不支持、只提供 `get_idx`，`get`/`set` 需 `pub`，泛型容器不释放用户 struct 元素。以 `docs/spec/ct-json-0.1.0.md` 与 `docs/review/ct-json-0.1.0-reeval-v0.52.0.md` 为准。
 
 ## 8 待确认
 
