@@ -1,14 +1,14 @@
-# ct-json 包规范 0.1.0（v0.52.0 重写版）
+# ct-json 包规范 0.1.0（v0.53.0 重写版）
 
-> 基线：CT `v0.52.0`。本版为全量重写，不继承旧版的时间线表述与「待落地」假设。
-> 旧版：`ct-json-spec.md`（基于 CT v0.44.1）。差异见 `ct-json-0.1.0-rewrite-notes.md`。
+> **实测基线：CT `v0.53.0`**（本机 `~/.local/bin/ct`）。本版为全量重写，不继承旧版的时间线表述与「待落地」假设；文中所有边界、诊断文本与验收命令均在 v0.53.0 上复跑。
+> 旧版：`ct-json-spec.md`（基于 CT v0.44.1）。差异见 `ct-json-0.1.0-rewrite-notes.md`；历史复评 `docs/review/ct-json-0.1.0-reeval-v0.52.0.md` 保留其 v0.52.0 基线，不随本版改口。
 > 六题已全部裁定（Q-1～Q-5 与规范重写）；仅写入浮点编码格式作为实现细节待定（Q-6），不阻塞主体。
 
 ## 一、定位
 
 ct-json 做两件事：把 JSON 文本解码为可读写的树；把树编码回 JSON 文本。
 
-长期目标是与 JavaScript 相同的访问方式（`data.server.port`、`data["server"]`、`items[0].name`）。v0.52.0 已支持**单层字符串键下标**，因此本版把 `v["server"]` 作为正式访问入口；数字下标与方法结果链式仍不可用，边界见 §五。
+长期目标是与 JavaScript 相同的访问方式（`data.server.port`、`data["server"]`、`items[0].name`）。v0.53.0 已支持**单层字符串键下标**，因此本版把 `v["server"]` 作为正式访问入口；数字下标与方法结果链式仍不可用，边界见 §五。
 
 不做：流式解析、JSON Schema 校验、路径查询 API、把 JSON 语义内建进 CT 语言层。
 
@@ -16,7 +16,7 @@ ct-json 做两件事：把 JSON 文本解码为可读写的树；把树编码回
 
 ### 2.1 具名 union + tag（匿名 union 禁用）
 
-v0.52.0 对匿名 union 具名字段是硬错：
+v0.53.0 对匿名 union 具名字段是硬错：
 
 ```
 error: an anonymous record member cannot have a name; tag the record instead
@@ -52,7 +52,7 @@ pub struct JsonObj {
     int len;  int cap;
     Str *keys;             // 容器持有；建键时深拷贝
     JsonRef *vals;
-    Map<Str, int> *index;  // 键 → 槽位，O(1)
+    Map<Str, int> *index;  // 键 → 槽位；v0.53.0 的 Map 是插入序数组查找，不是哈希
 }
 pub struct JsonArr {
     int len;  int cap;
@@ -90,11 +90,12 @@ impl JsonRef {
 }
 ```
 
-- `v["server"]` 展开为 `v.get("server")`（v0.52.0 Phase 52 协议）。
+- `v["server"]` 展开为 `v.get("server")`（v0.53.0 沿用 Phase 52 协议）。
 - `get` 返回句柄；键不存在时 `p == NULL`，用 `has` 区分「缺失」与「值为 null」。
 - 单层可用；**不能写成 `v["a"]["b"]`**（方法结果作接收者，见 §五）。
 - 键强制 `Str`（Q-1 裁定 A）：`get` 内部把传入的 `char *` 立即转成 `Str` 查找，临时 `Str` 由 `get` 释放；不把 `char *` 存进容器。
-- **协议例外（需负责人确认）**：Q-1 要求「传 `char *` 是编译错误」，但 v0.52.0 的下标协议把字面量按 `char *` 传给 `get`。若 `get` 声明为 `Str`，`v["k"]` 在 C 层报 `passing 'char[2]' to parameter of incompatible type 'struct Str'`（实测）。因此 `get(char *)` 是唯一的 `char *` 入口，只作协议适配；其余键 API 一律收 `Str`。若不接受这个例外，`v["k"]` 与「`char *` 全禁」不能同时成立。
+- **协议例外（已确认）**：Q-1 要求「传 `char *` 是编译错误」，但 v0.53.0 的下标协议把字面量按 `char *` 传给 `get`。若 `get` 声明为 `Str`，`v["k"]` 在 C 层报 `passing 'char[2]' to parameter of incompatible type 'struct Str'`（实测）。因此 `get(char *)` 是唯一的 `char *` 入口，只作协议适配；其余键 API 一律收 `Str`，并在文档中明示为例外而非遗漏。
+- **键类型的诊断来自 C 层（实测顺序）**：调用 `json_member(v, "k")` 时，CT 先报 `type mismatch: 'json_member' argument 2: expected 'struct Str', got 'char *'`，这是一条 **warning**，构建继续；随后 C 编译器报 `passing 'char[2]' to parameter of incompatible type 'struct Str'` 并让构建失败。也就是说拦住 `char *` 键的是 cc 的类型检查，不是 CT 的键类型检查；不要把这条 warning 当作已拦截。
 
 ### 3.3 写：字符串键下标
 
@@ -119,7 +120,7 @@ impl JsonRef {
 
 ### 3.4 数字下标：0.1.0 只提供 `get_idx`（Q-2 裁定 A）
 
-**`v[0]` 在 0.1.0 不支持**：v0.52.0 的用户类型下标协议只覆盖单层字符串键，数字参数不匹配；`v[0]` 会被展开成 `get(0)`，不是数字访问。已向 CT 提需求，方向是将来 `v[i]` 成立。
+**`v[0]` 在 0.1.0 不支持**：v0.53.0 的用户类型下标协议只覆盖单层字符串键；`v[0]` 会被展开成 `get(0)`，其中 `0` 作为空 `char *` 键传入。实测 `v[0]` **编译通过并静默返回空句柄**（不报错、不崩溃），这不是数字访问。已向 CT 提需求，方向是将来 `v[i]` 成立。
 
 0.1.0 的数组读入口：
 
@@ -146,7 +147,7 @@ JsonRef oob   = items.get_idx(json_arr_len(items));  // p == NULL
 
 ### 3.5 取值转换（显式，无自动转换）
 
-v0.52.0 没有自动类型转换，`int x = doc["port"]` 不成立。转换必须是显式调用：
+v0.53.0 没有自动类型转换，`int x = doc["port"]` 不成立。转换必须是显式调用：
 
 ```ct
 pub int json_as_int(JsonRef v, long long *out);
@@ -166,7 +167,7 @@ pub int json_tag(JsonRef v);
 pub char *json_encode(JsonRef root);   // 成功返回 malloc 字符串，调用方 free
 ```
 
-单一入口，**不使用同名重载**（v0.52.0 仍不支持，三重载在 C 层报 `conflicting types`）。
+单一入口，**不使用同名重载**（v0.53.0 仍不支持，三重载在 C 层报 `conflicting types`）。
 
 - 对象按 `keys` 数组顺序输出。
 - 解析来源的数字输出原文；写入的整数输出十进制；写入的浮点格式待定。
@@ -189,7 +190,7 @@ pub void json_free(JsonRef v);   // 等价于 json_release 一次
 - 容器负责释放元素（Q-4 裁定 A）：`JsonObj` / `JsonArr` 的 `impl Drop` 对 `[0, len)` 内每个元素调用一次 `json_release`，然后释放键数组/元素数组，最后释放容器；使用者不手动 release 元素。
 - 释放顺序：先元素（只释放已构造的 `len` 个），再底层数组，最后容器/键；`[len, cap)` 未构造，不释放。
 - 元素不可 drop（标量或空句柄）时，`json_release` 为 no-op，容器照常继续。
-- 实现限制（实测）：v0.52.0 为泛型容器生成的用户 struct `__elem_release` 是空体（`(void)e;`），只有 `Str` 等内建类型会真正 release。因此 ct-json **不把 `JsonRef` 放进 `Vec`/`Map` 后依赖它们的 release**，而用 `JsonArr`/`JsonObj` 自己显式循环；「容器负责」由容器代码完成，不依赖编译器为泛型生成元素 drop。
+- 实现限制（实测）：v0.53.0 为泛型容器生成的用户 struct `__elem_release` 是空体（`(void)e;`），只有 `Str` 等内建类型会真正 release。因此 ct-json **不把 `JsonRef` 放进 `Vec`/`Map` 后依赖它们的 release**，而用 `JsonArr`/`JsonObj` 自己显式循环；「容器负责」由容器代码完成，不依赖编译器为泛型生成元素 drop。
 - 自定义释放：需要时显式写 `impl Drop` 并说明释放什么；**不要求空 `impl Drop`**（ADR-0001 规则 4 降级）。
 - `json_free` 之后该句柄不得再用。
 
@@ -200,34 +201,68 @@ pub void json_free(JsonRef v);   // 等价于 json_release 一次
 | J1 | 支持 | `JsonRef root = ...; JsonRef a = root["a"];` 用局部变量承接，不用 union 成员链 |
 | J2 | 支持 | `json_arr_len(root)`；元素用 `get_idx(i)` |
 | J3 | 支持 | `json_tag(root)` 分派；`pub enum` 可用 |
-| J4 | **不支持** | 0.1.0 只返回负错误码，不提供 `JsonError{line,col,message}`；`message` 所有权无裁定 |
-| J5 | 支持（改写） | `JsonRef s = doc["server"]; JsonRef h = s["host"];`；单表达式链式不支持 |
+| J4 | **不支持** | 0.1.0 只返回负错误码，不提供 `JsonError{line,col,message}`；`message` 所有权无裁定。升级路径：0.1.1 迁到错误对象（code + offset + message） |
+| J5 | 支持 | `JsonRef h = doc["server"]["host"];` 在声明初始化/赋值位置可用；作为函数参数时不可用（§5.1） |
 | J6 | 支持（改写） | `long long port; json_as_int(doc["port"], &port);`；无自动转换 |
 | J7 | 支持 | `has` 区分缺失；`get` 不崩 |
-| J8 | **不支持** | 0.1.0 不提供 `json_str` 等构造辅助，也不支持三重载 `json_encode`；原断言形态不成立 |
+| J8 | **不支持** | 0.1.0 不提供 `json_str` 等构造辅助，`json_encode` 只留单入口；原断言形态不成立。升级路径：0.1.1 补构造 API（仍单入口），否则在 0.1.1 明确废弃原断言 |
 | J9 | 支持 | 只读编码；返回值由调用方 `free`，库内不释放 |
 | J10 | 支持（改写） | `json_release` 计数归零；不再用 `delete doc` 断言 |
-| J11 | **不支持** | 三层下标链依赖方法结果作接收者；v0.52.0 报 `a method call on a temporary is only allowed at the start of a statement or of an assignment` |
+| J11 | **不支持** | 三级下标链即使位于声明初始化/赋值位置也报 `a method call on a temporary is only allowed at the start of a statement or of an assignment`；两级链可用，见 §5.1 |
 | J12 | 支持 | `json_as_*` + `json_tag` 逐元素判定 |
 | J13 | 支持 | `json_as_str` 对非字符串返回 `JSON_ERR_TYPE` |
 | J14 | 支持 | `json_as_int` 对 bool 返回 0/1；越界返回 `JSON_ERR_RANGE` |
 
 不支持的三条是 J4、J8、J11，原因如上；不使用「暂不支持」这种含糊表述。
 
-## 五、v0.52.0 的访问边界
+## 五、v0.53.0 的访问边界
 
 | 能力 | 现状 | 规范写法 |
 | --- | --- | --- |
 | `v["k"]` 读 | 可用（`pub get`） | `v["k"]` |
 | `v["k"] = x` 写 | 可用（`pub set`） | `v["k"] = x` |
 | 跨单元下标 | `get`/`set` 必须 `pub` | `pub JsonRef get(char *k);` |
-| 数字下标 `v[0]` | 不匹配，落 `get(0)` | **0.1.0 不支持**；用 `get_idx(i)`，越界返回空句柄 |
+| 数字下标 `v[0]` | 编译通过，落 `get(0)`：`0` 是空 `char *` 键，**静默返回空句柄** | **0.1.0 不支持**；用 `get_idx(i)`，越界返回空句柄 |
 | 指针接收者 `p["k"]` | 不展开，落 C 语义 | 用 `JsonRef` 值句柄，不用 `JsonNode*` 做公开入口 |
-| 链式 `v["a"]["b"]` | 不支持（临时值调用） | 拆成两条语句，用局部变量承接 |
-| 方法结果链 `v.get("a").get("b")` | 不支持（同上） | 同上 |
+| 两级链 `v["a"]["b"]` | 可用（声明初始化/赋值位置）；三级链报临时值错误 | 见 §5.1 正例 |
+| 方法结果链 `v.get("a").get("b")` | 不支持：`method receiver must be a variable, an element, a call or a field chain` | 拆成 `JsonRef a = doc.get("a"); JsonRef b = a.get("b");` |
+| 对临时值调方法 `doc["a"].has(k)` | 不支持：`a method call on a temporary is only allowed at the start of a statement or of an assignment` | 先取局部变量 |
 | 经 union 成员的方法调用 | 不支持（`unknown receiver type`） | 先取到局部变量再调用 |
 | 自动转换 | 不存在 | 显式 `json_as_int` / `json_as_str` |
 | 同名重载 | 不支持（C 层冲突） | 一个名字一个函数；编码只留单入口 |
+
+### 5.1 链式访问的实测边界（编译器限制，不是设计取舍）
+
+**正例**——两级下标链在声明初始化与赋值位置可用：
+
+```ct
+JsonRef server = doc["server"];
+JsonRef host   = doc["server"]["host"];   // 声明初始化位置
+JsonRef port_ref;
+port_ref = doc["server"]["port"];         // 赋值位置
+```
+
+**反例**——以下四种都不编译：
+
+```ct
+// 1) 三级下标链：即使位于声明初始化/赋值位置也不行
+JsonRef c = doc["a"]["b"]["c"];
+// error: a method call on a temporary is only allowed at the start of a statement or of an assignment
+
+// 2) 对临时值调方法
+doc["server"].has(k);
+// error: 同上
+
+// 3) 把两级下标链当函数参数
+take(doc["server"]["port"]);
+// error: 同上
+
+// 4) 方法结果链（与下标链不同，两级也不成立）
+JsonRef b = doc.get("a").get("b");
+// error: method receiver must be a variable, an element, a call or a field chain
+```
+
+边界来自编译器对「临时值接收者」的限制：声明初始化/赋值位置允许一次临时值接收者，方法参数位置和三级链不允许；方法结果链则完全不属于可接受的接收者形态。它是**编译器限制**，不是 ct-json 放弃链式访问；拆成局部变量可绕过全部四种。
 
 ## 六、其他必须改写的写法
 
@@ -258,6 +293,15 @@ k.release();                  // 外部释放后对象仍持有副本
 
 ## 八、验收（0.1.0 范围）
 
+以下每条都在 CT `v0.53.0` 上复跑；构建与运行命令：
+
+```sh
+CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j1_roundtrip.ct -I src -o /tmp/ctjson_test
+/tmp/ctjson_test
+CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build json.ct -o /tmp/jsongate
+/tmp/jsongate | diff - json.expected.out
+```
+
 1. 解码后 `json_tag` 正确；对象按键序输出；`has` 区分缺失与 `null`。
 2. `v["k"]` 读、`v["k"] = x` 写；跨单元在 `get`/`set` 为 `pub` 时可用；非 `pub` 必须编译失败。
 3. 数字原文往返（`1.0`、长整数）；写入 int64 精确；浮点格式待定。
@@ -271,7 +315,7 @@ k.release();                  // 外部释放后对象仍持有副本
 
 | 编号 | 问题 | 本版处理 |
 | --- | --- | --- |
-| Q-1 | 对象键强制 `Str` 还是允许 `char *` | **已裁定 A**：`Str` 键、插入深拷贝、容器持有；协议入口 `get`/`set` 的 `char *` 例外见 §3.2，待负责人确认 |
+| Q-1 | 对象键强制 `Str` 还是允许 `char *` | **已裁定 A 并已确认例外**：`Str` 键、插入深拷贝、容器持有；协议入口 `get`/`set` 的 `char *` 例外见 §3.2 |
 | Q-2 | 数字下标等 `v[0]`，还是先 `get_idx` | **已裁定 A**：0.1.0 只提供 `get_idx(i)`；写入口只给 `set_idx(i,v)`（越界报错、不扩容）与 `push(v)`；插入/删除不支持 |
 | Q-3 | ADR-0001 规则 4 的「Drop 空桩」理由是否改写 | **已裁定 B**：规则 4 降级，不强制空 `impl Drop`；需自定义释放时显式写并说明释放什么；理由见 ADR-0001 注 |
 | Q-4 | 容器元素由调用方显式 release，还是等容器自动 drop | **已裁定 A**：容器负责释放元素（Drop 循环 `json_release`）；泛型容器限制见 §3.7 |
