@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| spec-version | `1.9.0` |
+| spec-version | `1.10.0` |
 | 状态 | 草稿（待用户评审，未落入任何项目） |
 | 适用范围 | `/Users/samxx/trae-ws` 下全部项目；新项目按第 12 节纳管 |
 | 主规范落点 | `.ai-engineering/methodology/ai-coding-workflow.md`（v1 建议落点，见第 11 节） |
@@ -1228,6 +1228,7 @@ AI_ENGINEERING_SPEC=<主规范路径> ...          # 覆盖默认主规范位置
 | 项目 | 路径 | `AGENTS.md` | 块头 version | 最近同步 | 状态 |
 | --- | --- | --- | --- | --- | --- |
 | ct-lang | `/Users/samxx/trae-ws/ct-lang` | `<待项目侧会话回填>` | `<待回填，非已确认>` | `<待回填，非已确认>` | `pending（未落库）` |
+| nexcore | `/Users/samxx/trae-ws/nexcore` | `AGENTS.md`（生成块 1.9.0 / b8651332…，已落库） | `1.9.0` | `2026-11-15`（提交 `7a5c2a1`） | `active` |
 | sam-utils | `/Users/samxx/trae-ws/sam-utils` | `<待项目侧会话回填>` | `<待回填，非已确认>` | `<待回填，非已确认>` | `pending（未落库）` |
 
 后四列一律是占位，由项目侧会话实测后回填；带 `<...>` 的单元格不算已确认，也不得据此宣称已落库。`.ai-engineering` 自身是规范仓库，不是项目，不进表；清单之外的项目即使有 `AGENTS.md`，也不算纳管。

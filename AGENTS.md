@@ -5,7 +5,7 @@
 - 本项目只能加严；放宽必须写 `deviation:` 并由用户签字（日期 + 理由）。
 - 生成块由 `bin/sync-agents.sh --write AGENTS.md` 维护，不得手改块内任何字符。
 
-<!-- spec:begin version=1.9.0 sha256=b8651332d8b5e4db93f7a8718a3fc00c8a2c43627e1ce7145dbae82ecb4520dc -->
+<!-- spec:begin version=1.10.0 sha256=e3905e9bf8637a1e486a8498ed653628ec3c50be53298c60e609efc3b6a33caf -->
 <!-- 由 sync-agents.sh 生成，禁止手改（11.5）。主规范：/Users/samxx/trae-ws/.ai-engineering/methodology/ai-coding-workflow.md -->
 <!-- 全文副本：docs/spec/ai-coding-workflow.md；该文件的 sha256 必须等于上面的 sha256。 -->
 <!-- 块内是“每轮必做判据”的摘录 + 章节索引，不是规范全文；未写入的规则仍在主规范，冲突以主规范为准。 -->
@@ -252,7 +252,7 @@ AI_ENGINEERING_SPEC=<主规范路径> ...          # 覆盖默认主规范位置
 **L-7 纳管项目清单（可枚举，唯一一份）。** 新项目纳入时加行；退役标 `retired` 并保留行，不删。`.ai-engineering` 自身是规范仓库，**不是**项目，不进表。
 
 
-> L-7 的纳管清单表（含 ct-lang / sam-utils / rill-dsl 的状态）见主规范 §11.5，块内不重复。
+> L-7 的纳管清单表见主规范 §11.5（可枚举、唯一一份），块内不重复。
 <!-- spec:end -->
 
 ### 0.1 本项目实例化
