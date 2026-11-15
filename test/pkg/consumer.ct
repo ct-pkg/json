@@ -1,0 +1,91 @@
+/*
+ * 包消费冒烟：模拟 ct get + ct install 之后的第三方工程。
+ *
+ * 构建（仓库内，验证 import 路径与清单 namespace 一致）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build test/pkg/consumer.ct -I . -o /tmp/pkg_consumer
+ *
+ * 构建（真实消费方）：
+ *   ct get <本仓库> && ct install
+ *   CT_STD_DIR=... ct build -I vendor/json main.ct -o build
+ *
+ * 覆盖安装后必须可用的九种形态：单层读、覆盖写、新增键、两级链读、
+ * get_idx、has(Str)、对象/数组迭代、编码回字符串、共享引用。
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import json::src::json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"host\":\"db.local\",\"port\":8080},\"tags\":[\"a\",\"b\"]}";
+    JsonRef doc;
+    JsonRef port;
+    Str host_key = str_from("host");
+    Str name_key = str_from("name");
+    char *out;
+    int i;
+    int n;
+    int fails = 0;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    /* 1 单层读 */
+    if (json_tag(doc["server"]) != JSON_TAG_OBJ) fails = fails + 1;
+    /* 2 覆盖写 */
+    if (json_decode("9090", 4, &port) != JSON_OK) return 1;
+    doc["port"] = port;
+    /* 3 新增键 */
+    doc["name"] = port;
+    json_release(port);
+    /* 4 两级链读 */
+    {
+        JsonRef h = doc["server"]["host"];
+        int len = -1;
+        char *s = json_as_str(h, &len);
+        if (s == 0 || len != 8) fails = fails + 1;
+    }
+    /* 5 get_idx */
+    {
+        JsonRef tags = doc["tags"];
+        int len = -1;
+        char *s = json_as_str(tags.get_idx(0), &len);
+        if (s == 0 || len != 1) fails = fails + 1;
+        /* 6 has(Str) */
+        if (!tags.has(host_key)) fails = fails + 0;   /* 数组上没有该键，恒为 0 */
+    }
+    {
+        JsonRef server = doc["server"];
+        if (!server.has(host_key)) fails = fails + 1;
+    }
+    /* 7 迭代数组与对象 */
+    {
+        JsonRef tags = doc["tags"];
+        n = json_arr_len(tags);
+        for (i = 0; i < n; i = i + 1) {
+            if (tags.get_idx(i).p == 0) fails = fails + 1;
+        }
+        n = json_obj_len(doc);
+        for (i = 0; i < n; i = i + 1) {
+            int klen = -1;
+            if (json_obj_key_at(doc, i, &klen) == 0) fails = fails + 1;
+        }
+    }
+    /* 8 编码回字符串 */
+    out = json_encode(doc);
+    if (out == 0 || strstr(out, "\"name\":9090") == 0) fails = fails + 1;
+    printf("%s\n", out);
+    free(out);
+    /* 9 共享引用：同一节点挂到两个键下 */
+    doc["alias"] = doc["server"];
+    n = json_obj_len(doc);
+    if (n != 5) fails = fails + 1;
+
+    name_key.release();
+    host_key.release();
+    json_free(doc);
+    printf("consumer fails=%d\n", fails);
+    return fails == 0 ? 0 : 1;
+}
