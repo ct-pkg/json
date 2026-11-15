@@ -1,0 +1,22 @@
+/*
+ * 6d) 失败对照：定义单元的 get 没有 pub，跨单元下标不可用。
+ *
+ * 构建（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/fail/private_get.ct \
+ *       -I src -I docs/snippets/fail/private_unit -o /tmp/f_priv
+ *
+ * 照现状记录，不编译。
+ */
+#include <stdio.h>
+
+import private_lib;
+
+int main(void)
+{
+    Box b;
+    b.v = 1;
+    int x = b["k"];
+    printf("%d\n", x);
+    return 0;
+}

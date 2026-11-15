@@ -1,0 +1,32 @@
+/*
+ * 5) 跨单元下标：本文件是「使用方」，定义方是 src/json.h.ct。
+ *
+ * 构建 / 运行（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/cross_unit.ct -I src -o /tmp/s_cross && /tmp/s_cross
+ *
+ * 能跨单元用下标，是因为 JsonRef 的 get/set 带 pub：
+ *     pub JsonRef get(char *key);
+ *     pub void    set(char *key, JsonRef value);
+ * 去掉 pub，这里两条下标都会报 "is private to its unit"（见 README 摘录）。
+ */
+#include <stdio.h>
+#include <string.h>
+
+import json;
+
+int main(void)
+{
+    char *text = "{\"k\":{\"n\":42}}";
+    JsonRef doc;
+    JsonRef k;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    k = doc["k"];                 /* 跨单元读 */
+    doc["alias"] = k;             /* 跨单元写 */
+    printf("keys=%d alias_tag=%d\n", json_obj_len(doc), json_tag(doc["alias"]));
+
+    json_free(doc);
+    return 0;
+}

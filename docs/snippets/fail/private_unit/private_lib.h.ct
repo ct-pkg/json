@@ -1,0 +1,11 @@
+/* 6d) 失败对照的辅助单元：get 没有 pub。 */
+pub struct Box {
+    int v;
+}
+
+impl Box {
+    int get(char *key)
+    {
+        return key == 0 ? -1 : 0;
+    }
+}

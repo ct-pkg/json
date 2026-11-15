@@ -1,0 +1,49 @@
+/*
+ * 1) 字符串键读取：单层下标返回借用句柄。
+ *
+ * 构建 / 运行（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/read_str.ct -I src -o /tmp/s_read && /tmp/s_read
+ */
+#include <stdio.h>
+#include <string.h>
+
+import json;
+
+int main(void)
+{
+    char *text = "{\"server\":{\"host\":\"db.local\"},\"tags\":[\"a\",\"b\"],\"opt\":null}";
+    JsonRef doc;
+    JsonRef server;
+    JsonRef missing;
+    JsonRef opt;
+    Str host_key = str_from("host");
+    Str nope_key = str_from("nope");
+    int len = -1;
+    char *host;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    /* v["k"] 返回 JsonRef 值句柄（8 字节指针），不是 char*、不是 Str。
+       它是借用的：没有 retain，不能比容器活得更久。 */
+    server = doc["server"];
+    host = json_as_str(server["host"], &len);   /* 值要再经显式 as_* 取出 */
+    printf("server: tag=%d host=%.*s\n", json_tag(server), len, host);
+
+    /* 缺失键：空句柄 p == 0，tag 为 -1，不是 null。 */
+    missing = doc["nope"];
+    printf("missing: empty=%d tag=%d\n", missing.p == 0, json_tag(missing));
+
+    /* 显式 null：有效句柄，tag 为 JSON_TAG_NULL（0）。 */
+    opt = doc["opt"];
+    printf("explicit null: empty=%d tag=%d is_null=%d\n",
+           opt.p == 0, json_tag(opt), json_is_null(opt));
+
+    /* 存在性用 has(Str)，它区分「缺失」和「显式 null」。 */
+    printf("has(host)=%d has(nope)=%d\n", server.has(host_key), server.has(nope_key));
+
+    host_key.release();
+    nope_key.release();
+    json_free(doc);
+    return 0;
+}

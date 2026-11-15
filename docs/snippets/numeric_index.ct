@@ -1,0 +1,44 @@
+/*
+ * 4) 数字下标：v[0] 与 get_idx(0) 的真实差别。
+ *
+ * 构建 / 运行（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/numeric_index.ct -I src -o /tmp/s_index && /tmp/s_index
+ *
+ * v[0] 能编译，不会报错，但它展开成 get(0)，0 被当作空 char* 键，
+ * 于是静默拿到空句柄——不是数组访问，也不会崩。
+ */
+#include <stdio.h>
+#include <string.h>
+
+import json;
+
+int main(void)
+{
+    char *text = "{\"items\":[10,20]}";
+    JsonRef doc;
+    JsonRef items;
+    JsonRef via_sub;
+    JsonRef via_idx;
+    long long n = 0;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+    items = doc["items"];
+
+    /* 写法 A：数字下标（编译通过，结果是空句柄）。 */
+    via_sub = items[0];
+    printf("items[0]:   empty=%d tag=%d\n", via_sub.p == 0, json_tag(via_sub));
+
+    /* 写法 B：get_idx（0.1.0 的数组读入口）。 */
+    via_idx = items.get_idx(0);
+    printf("get_idx(0): empty=%d tag=%d value=%d\n",
+           via_idx.p == 0, json_tag(via_idx),
+           json_as_int(via_idx, &n) == JSON_OK && n == 10);
+
+    /* 越界：get_idx 返回空句柄，不崩。 */
+    via_idx = items.get_idx(2);
+    printf("get_idx(2): empty=%d tag=%d\n", via_idx.p == 0, json_tag(via_idx));
+
+    json_free(doc);
+    return 0;
+}

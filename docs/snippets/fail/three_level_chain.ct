@@ -1,0 +1,21 @@
+/*
+ * 6b) 失败对照：三级下标链。
+ *
+ * 构建（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/fail/three_level_chain.ct -I src -o /tmp/f_chain
+ *
+ * 照现状记录，不编译。位置在声明初始化处也不行。
+ */
+#include <string.h>
+
+import json;
+
+int main(void)
+{
+    JsonRef doc;
+    if (json_decode("{\"a\":{\"b\":{\"c\":1}}}", 19, &doc) != JSON_OK) return 1;
+    JsonRef c = doc["a"]["b"]["c"];
+    json_free(doc);
+    return c.p == 0;
+}

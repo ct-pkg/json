@@ -1,0 +1,55 @@
+/*
+ * 2) 字符串键写入 / 覆盖 / 新增，以及共享引用语义。
+ *
+ * 构建 / 运行（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/write_str.ct -I src -o /tmp/s_write && /tmp/s_write
+ */
+#include <stdio.h>
+#include <string.h>
+
+import json;
+
+int main(void)
+{
+    char *base = "{\"port\":8080}";
+    JsonRef doc;
+    JsonRef port_value;
+    char *out;
+
+    if (json_decode(base, (int)strlen(base), &doc) != JSON_OK) return 1;
+
+    /* 字面量值需要先成为一个节点；写入口收的是 JsonRef，不是字符串/数字。 */
+    if (json_decode("9090", 4, &port_value) != JSON_OK) return 1;
+
+    /* 覆盖已有键：位置不变，值替换。 */
+    doc["port"] = port_value;
+    /* 新增键：追加到尾部，保持插入序。 */
+    doc["name"] = port_value;
+
+    /* 写是共享引用：容器 retain 了自己的一份，调用方仍然持有并负责释放。 */
+    json_release(port_value);
+
+    out = json_encode(doc);
+    printf("encoded: %s\n", out);
+    printf("keys: %d\n", json_obj_len(doc));
+    free(out);
+
+    /* Str 键的专用写入口（键只有这一种类型）。 */
+    {
+        Str k = str_from("owner");
+        doc.set_str(k, "ops", 3);
+        k.release();
+    }
+    {
+        Str k = str_from("enabled");
+        doc.set_bool(k, 1);
+        k.release();
+    }
+    out = json_encode(doc);
+    printf("after set_str/set_bool: %s\n", out);
+    free(out);
+
+    json_free(doc);
+    return 0;
+}

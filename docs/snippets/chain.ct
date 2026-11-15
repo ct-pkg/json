@@ -1,0 +1,40 @@
+/*
+ * 3) 两级链：哪些位置可用。
+ *
+ * 构建 / 运行（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/chain.ct -I src -o /tmp/s_chain && /tmp/s_chain
+ *
+ * 不可用的位置（三级链、当函数参数、对临时值调方法）见 fail/ 下三个文件。
+ */
+#include <stdio.h>
+#include <string.h>
+
+import json;
+
+int main(void)
+{
+    char *text = "{\"a\":{\"b\":{\"c\":7}}}";
+    JsonRef doc;
+    JsonRef b;
+    JsonRef c;
+    long long n = 0;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    /* 位置一：声明初始化。 */
+    JsonRef d = doc["a"]["b"];
+    printf("decl init: tag=%d\n", json_tag(d));
+
+    /* 位置二：赋值右值。 */
+    b = doc["a"]["b"];
+    printf("assign rhs: tag=%d\n", json_tag(b));
+
+    /* 想拿第三层，必须落地一次：两级链的返回值是一个临时值，不能继续链。 */
+    c = b["c"];
+    printf("third level: tag=%d value=%d\n",
+           json_tag(c), json_as_int(c, &n) == JSON_OK && n == 7);
+
+    json_free(doc);
+    return 0;
+}
