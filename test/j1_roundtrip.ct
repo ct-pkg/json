@@ -50,6 +50,22 @@ static JsonRef empty_ref(void)
     return r;
 }
 
+static JsonRef member_cstr(JsonRef v, char *k)
+{
+    Str s = str_from(k);
+    JsonRef r = json_member(v, s);
+    s.release();
+    return r;
+}
+
+static int has_cstr(JsonRef v, char *k)
+{
+    Str s = str_from(k);
+    int r = v.has(s);
+    s.release();
+    return r;
+}
+
 static void roundtrip(struct Stats *st, char *name, char *text, char *want)
 {
     JsonRef root = empty_ref();
@@ -116,7 +132,7 @@ static void lifecycle_contract(struct Stats *st)
     json_release(root);
     check(st, root.p->refs == 1, "release drops one reference");
 
-    child = json_member(root, "a");
+    child = member_cstr(root, "a");
     check(st, child.p != 0 && child.p->refs == 1, "a member is borrowed, not retained");
     json_retain(child);
     check(st, child.p->refs == 2, "retain on a borrowed member is explicit");
@@ -124,7 +140,7 @@ static void lifecycle_contract(struct Stats *st)
     json_release(root);            /* frees the tree, drops one child ref */
     check(st, child.p->refs == 1, "child survives the container release");
 
-    nested = json_member(child, "x");
+    nested = member_cstr(child, "x");
     check(st, json_as_int(nested, &x) == JSON_OK && x == 7, "child is readable after the parent is gone");
     json_free(child);
 }
@@ -155,44 +171,74 @@ static void access_contract(struct Stats *st)
     check(st, json_obj_len(root) == 6, "object has six keys");
     check(st, json_arr_len(root) == -1, "array length is -1 on an object");
 
-    missing = json_member(root, "zz");
+    missing = member_cstr(root, "zz");
     check(st, missing.p == 0, "missing key answers an empty handle");
     check(st, json_tag(missing) == -1, "tag of an empty handle is -1");
-    explicit_null = json_member(root, "n");
+    explicit_null = member_cstr(root, "n");
     check(st, explicit_null.p != 0, "explicit null answers a node");
     check(st, json_tag(explicit_null) == JSON_TAG_NULL, "explicit null has tag JSON_TAG_NULL");
     check(st, json_is_null(explicit_null) == 1, "is_null is true for explicit null");
     check(st, json_is_null(missing) == 0, "is_null is false for an empty handle");
 
-    check(st, json_as_int(json_member(root, "a"), &iv) == JSON_OK && iv == 1, "as_int reads an integer literal");
-    check(st, json_as_double(json_member(root, "a"), &dv) == JSON_OK && dv == 1.0, "as_double widens an integer literal");
-    check(st, json_as_double(json_member(root, "f"), &dv) == JSON_OK && dv == 2.5, "as_double reads a decimal");
-    s = json_as_str(json_member(root, "s"), &slen);
+    check(st, json_as_int(member_cstr(root, "a"), &iv) == JSON_OK && iv == 1, "as_int reads an integer literal");
+    check(st, json_as_double(member_cstr(root, "a"), &dv) == JSON_OK && dv == 1.0, "as_double widens an integer literal");
+    check(st, json_as_double(member_cstr(root, "f"), &dv) == JSON_OK && dv == 2.5, "as_double reads a decimal");
+    s = json_as_str(member_cstr(root, "s"), &slen);
     check(st, s != 0 && slen == 1 && s[0] == 'x', "as_str reads a string with its length");
     iv = 0;
-    check(st, json_as_int(json_member(root, "s"), &iv) == JSON_ERR_TYPE && iv == 0, "as_int on a string is a type error");
-    check(st, json_as_str(json_member(root, "obj"), &slen) == 0, "as_str on an object answers 0");
+    check(st, json_as_int(member_cstr(root, "s"), &iv) == JSON_ERR_TYPE && iv == 0, "as_int on a string is a type error");
+    check(st, json_as_str(member_cstr(root, "obj"), &slen) == 0, "as_str on an object answers 0");
     check(st, json_as_bool(explicit_null, &bv) == JSON_ERR_TYPE, "as_bool on null is a type error");
     check(st, json_as_int(missing, &iv) == JSON_ERR_TYPE, "as_int on an empty handle is a type error");
-    check(st, json_as_bool(json_member(json_member(root, "obj"), "k"), &bv) == JSON_OK && bv == 1, "as_bool reads true");
+    check(st, json_as_bool(member_cstr(member_cstr(root, "obj"), "k"), &bv) == JSON_OK && bv == 1, "as_bool reads true");
 
-    check(st, json_obj_len(json_member(root, "arr")) == -1, "obj_len on an array is -1");
-    check(st, json_arr_len(json_member(root, "obj")) == -1, "arr_len on an object is -1");
+    check(st, json_obj_len(member_cstr(root, "arr")) == -1, "obj_len on an array is -1");
+    check(st, json_arr_len(member_cstr(root, "obj")) == -1, "arr_len on an object is -1");
 
-    arr = json_member(root, "arr");
+    arr = member_cstr(root, "arr");
     check(st, json_arr_len(arr) == 2, "array length is 2");
     check(st, json_as_int(json_at(arr, 0), &iv) == JSON_OK && iv == 10, "at(0) is 10");
     check(st, json_as_int(json_at(arr, 1), &iv) == JSON_OK && iv == 20, "at(1) is 20");
     check(st, json_at(arr, 2).p == 0, "at(len) answers an empty handle");
     check(st, json_at(arr, -1).p == 0, "at(-1) answers an empty handle");
     check(st, json_at(root, 0).p == 0, "at on an object answers an empty handle");
-    check(st, json_member(arr, "x").p == 0, "member on an array answers an empty handle");
-    check(st, json_member(root, null_key).p == 0, "member with a NULL key answers an empty handle");
+    check(st, member_cstr(arr, "x").p == 0, "member on an array answers an empty handle");
+    check(st, member_cstr(root, null_key).p == 0, "member with a NULL key answers an empty handle");
 
-    check(st, strcmp(json_obj_key_at(root, 0), "a") == 0, "key_at(0) keeps insertion order");
-    check(st, strcmp(json_obj_key_at(root, 1), "n") == 0, "key_at(1) keeps insertion order");
-    check(st, json_obj_key_at(root, 6) == 0, "key_at out of range answers 0");
-    check(st, json_obj_key_at(arr, 0) == 0, "key_at on an array answers 0");
+    {
+        int klen = -1;
+        char *k0 = json_obj_key_at(root, 0, &klen);
+        check(st, k0 != 0 && klen == 1 && k0[0] == 'a', "key_at(0) keeps insertion order");
+        klen = -1;
+        k0 = json_obj_key_at(root, 1, &klen);
+        check(st, k0 != 0 && klen == 1 && k0[0] == 'n', "key_at(1) keeps insertion order");
+        check(st, json_obj_key_at(root, 6, &klen) == 0, "key_at out of range answers 0");
+        check(st, json_obj_key_at(arr, 0, &klen) == 0, "key_at on an array answers 0");
+    }
+
+    check(st, has_cstr(root, "a") == 1, "has finds a present key");
+    check(st, has_cstr(root, "zz") == 0, "has rejects a missing key");
+
+    {
+        Str k = str_from("name");
+        root.set_str(k, "rill", 4);
+        k.release();
+        check(st, has_cstr(root, "name") == 1, "inserting deep-copies the key");
+        check(st, json_obj_len(root) == 7, "the insert grows the object");
+    }
+    {
+        Str nk = str_from_len("a\0b", 3);
+        Str q;
+        int klen = -1;
+        char *kp;
+        root.set_str(nk, "v", 1);
+        nk.release();
+        q = str_from_len("a\0b", 3);
+        check(st, root.has(q) == 1, "a key with an embedded NUL is data");
+        q.release();
+        kp = json_obj_key_at(root, 7, &klen);
+        check(st, kp != 0 && klen == 3, "key_at reports the byte length");
+    }
 
     json_free(root);
 }
@@ -210,10 +256,10 @@ static void numeric_edges(struct Stats *st)
         check(st, 0, "numeric fixture decodes");
         return;
     }
-    check(st, json_tag(json_member(root, "max")) == JSON_TAG_NUM, "max is a number");
-    check(st, json_as_int(json_member(root, "max"), &iv) == JSON_OK && iv == 9223372036854775807LL, "int64 max is exact");
-    check(st, json_as_int(json_member(root, "over"), &iv) == JSON_ERR_RANGE, "int64 max + 1 is a range error");
-    check(st, json_as_double(json_member(root, "min"), &dv) == JSON_OK, "int64 min is readable as a double");
+    check(st, json_tag(member_cstr(root, "max")) == JSON_TAG_NUM, "max is a number");
+    check(st, json_as_int(member_cstr(root, "max"), &iv) == JSON_OK && iv == 9223372036854775807LL, "int64 max is exact");
+    check(st, json_as_int(member_cstr(root, "over"), &iv) == JSON_ERR_RANGE, "int64 max + 1 is a range error");
+    check(st, json_as_double(member_cstr(root, "min"), &dv) == JSON_OK, "int64 min is readable as a double");
     json_free(root);
 }
 
