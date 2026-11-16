@@ -1,12 +1,12 @@
 ---
 id: JSON-12
-status: open
+status: fixed
 priority: P1
 owner: 本包（编码）
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `2b9e9c4`；`test/j1_roundtrip.ct` 的 `a NUL value round-trips` 在测试提交 `d804224` 上 `not ok 95`
+evidence: 基线 `2b9e9c4`；测试提交 `d804224`（`not ok 95 a NUL value round-trips`）；修复提交 `5359fb4`
 ---
 
 # JSON-12 控制字节转义写 6 位十六进制，含 NUL 的值编码后改值
@@ -45,10 +45,12 @@ $ echo $?
 
 控制字节写成 4 位：`\u0000`、`\u0001`、`\u001f`；encode→decode 后字节与长度不变。
 
-## 修复
+## 修复（`5359fb4`）
 
 `j1_puts(b, "\\u")` + `j1_put_hex4(b, c)`。回归断言见 `test/j1_roundtrip.ct` 的
-`nul_value_contract`（4 条断言）。
+`nul_value_contract`（4 条断言）。修复后 `all checks passed`，`g3` 零警告。
+
+版本：`0.1.2` → `0.1.3`（V-3 的一次 fix）。
 
 ## 阻塞点
 
