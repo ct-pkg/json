@@ -417,6 +417,40 @@ static void chain_contract(struct Stats *st)
     json_free(root);
 }
 
+/* R-B-04 / R-B-07: a value with an embedded U+0000 must survive
+ * decode -> encode -> decode with the same byte count and bytes. */
+static void nul_value_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef back = empty_ref();
+    JsonRef s;
+    char *text = "{\"s\":\"a\\u0000b\"}";
+    char *enc;
+    char *sp;
+    int slen = -1;
+    int rc;
+
+    rc = json_decode(text, (int)strlen(text), &root);
+    check(st, rc == JSON_OK, "NUL fixture decodes");
+    if (rc != JSON_OK) return;
+    s = member_cstr(root, "s");
+    sp = json_as_str(s, &slen);
+    check(st, sp != 0 && slen == 3 && sp[1] == 0, "a NUL value keeps three bytes");
+
+    enc = json_encode(root);
+    check(st, enc != 0, "a NUL value encodes");
+    if (enc != 0) {
+        rc = json_decode(enc, (int)strlen(enc), &back);
+        check(st, rc == JSON_OK, "the NUL encoding parses");
+        sp = json_as_str(member_cstr(back, "s"), &slen);
+        check(st, sp != 0 && slen == 3 && sp[1] == 0 && sp[2] == 'b',
+              "a NUL value round-trips");
+        json_free(back);
+    }
+    free(enc);
+    json_free(root);
+}
+
 static void cycle_contract(struct Stats *st)
 {
     JsonRef root = empty_ref();
@@ -539,6 +573,7 @@ int main(void)
     lifecycle_contract(&st);
     array_write_contract(&st);
     write_contract(&st);
+    nul_value_contract(&st);
     subscript_contract(&st);
     chain_contract(&st);
     cycle_contract(&st);
