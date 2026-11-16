@@ -517,9 +517,9 @@ static void numeric_edges(struct Stats *st)
     check(st, rc == JSON_OK, "double edges decode");
     if (rc != JSON_OK) return;
 
-    dv = 0.0;
+    dv = 42.5;
     check(st, json_as_double(member_cstr(root, "huge"), &dv) == JSON_ERR_RANGE, "1e999 is a range error");
-    check(st, dv == 0.0, "a range error leaves out untouched");
+    check(st, dv == 42.5, "a range error leaves out untouched");
     check(st, json_as_double(member_cstr(root, "nhuge"), &dv) == JSON_ERR_RANGE, "-1e999 is a range error");
     check(st, json_as_double(member_cstr(root, "tiny"), &dv) == JSON_OK && dv == 0.0, "1e-400 underflows to 0.0");
     check(st, json_as_double(member_cstr(root, "prec"), &dv) == JSON_OK && dv == 0.30000000000000004, "a decimal is bit exact");
