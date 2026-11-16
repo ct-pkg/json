@@ -51,4 +51,9 @@ what-changed: <哪个前提/判据/失效条件被证伪，取代了什么>
 
 | 编号 | 日期 | 主题 | verdict | 状态 |
 | --- | --- | --- | --- | --- |
-| — | — | 尚无记录 | — | — |
+| D-001 | 2026-11-17 | Q-03 错误模型 | upheld | accepted |
+| D-002 | 2026-11-17 | Q-05 Unicode/BOM | upheld | accepted |
+| D-003 | 2026-11-17 | Q-06 包形态 | upheld | accepted |
+| D-004 | 2026-11-17 | Q-07 树形状与所有权 | upheld | accepted |
+| D-005 | 2026-11-17 | Q-08 深度与性能 | upheld | accepted |
+| D-006 | 2026-11-17 | Q-09 编码失败与数字输出 | upheld | accepted |

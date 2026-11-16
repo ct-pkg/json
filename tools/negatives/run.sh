@@ -85,6 +85,10 @@ case " $want " in
     d="$tmp/g2"; export_tree "$d"
     sed -i '' '/^| R-A-10 /d' "$d/docs/acceptance-map.md"
     expect_red "g2 missing requirement row" g2 "$d"
+
+    d="$tmp/g2-sym"; export_tree "$d"
+    sed -i '' '/^| `json_decode` |/d' "$d/docs/acceptance-map.md"
+    expect_red "g2 public symbol unmapped" g2 "$d"
     ;;
 esac
 
@@ -118,7 +122,11 @@ case " $want " in
 *' g8 '*)
     d="$tmp/g8"
     git clone -q "$pkg" "$d"
-    sed -i '' 's/^version = 0\.1\.1$/version = 0.1.2/' "$d/ct.pkg"
+    cur="$(sed -n 's/^version *= *//p' "$d/ct.pkg" | head -n 1)"
+    rest="${cur#*.}"; major="${cur%%.*}"; minor="${rest%%.*}"; patch="${rest#*.}"
+    patch_next="$major.$minor.$((patch + 1))"
+    minor_next="$major.$((minor + 1)).0"
+    sed -i '' "s/^version = $cur$/version = $patch_next/" "$d/ct.pkg"
     git -C "$d" -c user.name=neg -c user.email=neg@example.invalid \
         commit -qam 'chore: bump version without issue'
     expect_red "g8 version move without issue" g8 "$d"
@@ -127,7 +135,7 @@ case " $want " in
     # must still fail even when the body names the phase.
     d="$tmp/g8-minor"
     git clone -q "$pkg" "$d"
-    sed -i '' 's/^version = 0\.1\.1$/version = 0.2.0/' "$d/ct.pkg"
+    sed -i '' "s/^version = $cur$/version = $minor_next/" "$d/ct.pkg"
     git -C "$d" -c user.name=neg -c user.email=neg@example.invalid \
         commit -qam 'chore(release): PH-2 收口（v0.2.0）'
     expect_red "g8 minor without closed card" g8 "$d"
