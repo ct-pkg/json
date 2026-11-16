@@ -1,0 +1,53 @@
+/*
+ * 3b) 三级下标链与方法结果链（CT v0.62.0 起可用）。
+ *
+ * 构建 / 运行（在仓库根目录）：
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build docs/snippets/chain3.ct -I src -o /tmp/s_chain3 && /tmp/s_chain3
+ *
+ * 覆盖 JSON-1 / JSON-2 的三种形态：三级下标链（声明初始化、赋值右值）、
+ * 下标结果作方法接收者、方法结果链。末行固定为 `chain3 ok`，供 E-P1-2 核对。
+ */
+#include <stdio.h>
+#include <string.h>
+
+import json;
+
+int main(void)
+{
+    char *text = "{\"a\":{\"b\":{\"c\":1}},\"server\":{\"host\":\"h\"}}";
+    JsonRef doc;
+    JsonRef c;
+    JsonRef b;
+    Str k;
+    long long n = 0;
+    int present;
+
+    if (json_decode(text, (int)strlen(text), &doc) != JSON_OK) return 1;
+
+    /* 位置一：声明初始化。 */
+    c = doc["a"]["b"]["c"];
+    if (json_as_int(c, &n) != JSON_OK || n != 1) return 1;
+    printf("decl init: tag=%d value=%lld\n", json_tag(c), n);
+
+    /* 位置二：赋值右值。 */
+    c = doc["a"]["b"]["c"];
+    if (json_as_int(c, &n) != JSON_OK || n != 1) return 1;
+    printf("assign rhs: tag=%d value=%lld\n", json_tag(c), n);
+
+    /* 下标结果直接作方法接收者。 */
+    k = str_from("host");
+    present = doc["server"].has(k);
+    k.release();
+    if (present != 1) return 1;
+    printf("subscript receiver: has(host)=%d\n", present);
+
+    /* 方法结果继续链。 */
+    b = doc.get("a").get("b");
+    if (json_tag(b) != JSON_TAG_OBJ) return 1;
+    printf("method chain: tag=%d\n", json_tag(b));
+
+    json_free(doc);
+    printf("chain3 ok\n");
+    return 0;
+}

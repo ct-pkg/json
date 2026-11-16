@@ -1,6 +1,6 @@
 # ct-json 下标访问样例
 
-实测基线：CT `v0.53.0`。下列输出全部是本机实跑原文，命令都在仓库根目录执行：
+实测基线：CT `v0.53.0`（链式访问相关样例在 `v0.62.0` 复跑，见 §3b）。下列输出全部是本机实跑原文，命令都在仓库根目录执行：
 
 ```sh
 CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build <文件> -I src -o <可执行文件>
@@ -15,11 +15,10 @@ CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build <文件> -I src -o <可
 | `read_str.ct` | 单层 `v["k"]` 读、缺失键与显式 null 的区分 | 可运行 |
 | `write_str.ct` | `v["k"] = ref` 覆盖与新增、共享引用、`set_str`/`set_bool` | 可运行 |
 | `chain.ct` | 两级链在声明初始化、赋值右值两个位置 | 可运行 |
+| `chain3.ct` | 三级下标链、下标结果作接收者、方法结果链 | 可运行（v0.62.0） |
 | `numeric_index.ct` | `arr[0]` 与 `get_idx(0)` 的实际差别 | 可运行 |
 | `cross_unit.ct` | 定义在 `src/json.h.ct`、使用在本文件 | 可运行 |
 | `fail/char_key.ct` | `char *` 键传给 `json_member` | 不编译（照现状记录，JSON-3） |
-| `fail/three_level_chain.ct` | 三级下标链 | 不编译（照现状记录，JSON-1） |
-| `fail/temp_receiver.ct` | `doc["server"].has(k)` | 不编译（照现状记录，JSON-2） |
 | `fail/private_get.ct` | 定义单元 `get` 未加 `pub` | 不编译（照现状记录，说明跨单元要求） |
 
 ## 1. 字符串键读取
@@ -66,7 +65,24 @@ assign rhs: tag=4
 third level: tag=2 value=1
 ```
 
-可用位置：声明初始化、赋值右值。不可用位置：三级链、作为函数参数、对结果继续调方法——分别见 `fail/` 下三个文件与 `issues/JSON-1.md`、`JSON-2.md`。
+两级链可用位置：声明初始化、赋值右值。三级链、下标结果作接收者、方法结果链在 CT v0.62.0 起可用，见 §3b；仍不可用的是把链式结果直接作函数实参，登记在 `issues/JSON-5.md`。
+
+## 3b. 三级链与方法结果链（v0.62.0）
+
+```sh
+CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build docs/snippets/chain3.ct -I src -o /tmp/s_chain3
+/tmp/s_chain3
+```
+
+```console
+decl init: tag=2 value=1
+assign rhs: tag=2 value=1
+subscript receiver: has(host)=1
+method chain: tag=4
+chain3 ok
+```
+
+`doc["a"]["b"]["c"]` 在声明初始化与赋值右值两个位置都可用；`doc["server"].has(k)`（下标结果作接收者）与 `doc.get("a").get("b")`（方法结果链）同样可用。写链 `doc["a"]["b"]["c"] = x` 仍不可用，报 `a custom subscript write needs a statement and an lvalue receiver`，登记为 `JSON-6`；链式结果作函数实参仍不可用，见 `JSON-5`。
 
 ## 4. 数字下标与 `get_idx`
 
@@ -114,8 +130,6 @@ ctc: 1 error(s) generated
 | 写法 | 原文报错 | 归属 |
 | --- | --- | --- |
 | `json_member(doc, "k")` | `warning: type mismatch: 'json_member' argument 2: expected 'struct Str', got 'char *'`，随后 `error: passing 'char[2]' to parameter of incompatible type 'struct Str'` | 语言层诊断分级（JSON-3） |
-| `doc["a"]["b"]["c"]` | `error: a method call on a temporary is only allowed at the start of a statement or of an assignment` | 语言层（JSON-1） |
-| `doc["server"].has(k)` | `error: method receiver must be a variable, an element, a call or a field chain` | 语言层（JSON-2） |
 | 去掉 `pub` 的 `get` | `error: type 'Box' has no subscript: 'get' is private to its unit` | 本包使用约束（设计要求，不是缺陷） |
 
 ## 7. 能力总结
@@ -124,12 +138,14 @@ ctc: 1 error(s) generated
 | --- | --- | --- |
 | `v["k"]` 读 / `v["k"] = x` 写 | 可用（跨单元需 `pub`） | — |
 | 两级链（初始化/赋值） | 可用 | — |
-| 三级链 | 不可用 | 语言层（JSON-1） |
-| 对结果继续调方法 | 不可用 | 语言层（JSON-2） |
+| 三级链 | 可用（v0.62.0，声明初始化/赋值） | — |
+| 对结果继续调方法 | 可用（v0.62.0） | — |
+| 三级写链 `a["b"]["c"]["d"] = x` | 不可用 | 语言层（JSON-6） |
+| 链式结果作函数实参 | 不可用 | 语言层（JSON-5） |
 | `v[0]` 数字下标 | 编译通过但静默空句柄 | 语言层（已交编译组，见规范 §3.4；按裁定只记录，不另立条目） |
 | `arr.get_idx(i)` | 可用，越界返回空句柄 | — |
 
-写样例期间未发现本包实现问题；`issues/` 下三条均为语言层上游问题。
+写样例期间未发现本包实现问题；`issues/` 下 JSON-1…3、JSON-5、JSON-6 为语言层上游问题，JSON-4 为包消费问题（已 fixed），JSON-7 为门禁夹具问题（已 fixed）。
 
 ## 8. JS 风格使用形态（评估样例）
 
