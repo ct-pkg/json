@@ -64,6 +64,83 @@ static void nan_contract(struct Stats *st)
     encode_double(st, "a finite double still encodes", 2.5, 1);
 }
 
+static void error_position_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    int rc;
+
+    rc = json_decode("{} {}", 5, &root);
+    check(st, rc == JSON_ERR_TRAILING, "trailing is reported");
+    check(st, json_error_offset() == 3, "trailing offset is 3");
+    check(st, json_error_line() == 1 && json_error_column() == 4, "trailing line/col is 1:4");
+    check(st, root.p == 0, "a trailing error leaves out empty");
+
+    root = empty_ref();
+    rc = json_decode("{\n  \"a\" 1}", 10, &root);
+    check(st, rc == JSON_ERR_SYNTAX, "a missing colon is syntax");
+    check(st, json_error_offset() == 8, "the missing colon offset is 8");
+    check(st, json_error_line() == 2 && json_error_column() == 7,
+          "the missing colon is 2:7");
+    json_free(root);
+
+    root = empty_ref();
+    rc = json_decode("", 0, &root);
+    check(st, rc == JSON_ERR_EOF, "empty input is EOF");
+    check(st, json_error_offset() == 0 && json_error_line() == 1 && json_error_column() == 1,
+          "empty input is at 0, 1:1");
+
+    root = empty_ref();
+    rc = json_decode("{}", 2, &root);
+    check(st, rc == JSON_OK, "a good document decodes");
+    check(st, json_error_offset() == 0 && json_error_line() == 0 && json_error_column() == 0,
+          "a successful decode clears the position");
+    json_free(root);
+}
+
+static void message_contract(struct Stats *st)
+{
+    int codes[15] = {0, -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14};
+    int i;
+    int ok = 1;
+    for (i = 0; i < 15; i = i + 1) {
+        char *m = json_message(codes[i]);
+        if (m == 0 || m[0] == 0) ok = 0;
+    }
+    check(st, ok, "every known code has a non-empty message");
+    {
+        char *unknown = json_message(9999);
+        char *utf8 = json_message(JSON_ERR_UTF8);
+        char *type = json_message(JSON_ERR_TYPE);
+        check(st, unknown != 0 && unknown[0] != 0,
+              "an unknown code has a non-empty message");
+        check(st, utf8 != 0 && type != 0 && strcmp(utf8, type) != 0,
+              "different codes have different messages");
+    }
+}
+
+static void cleanup_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    Str key = str_from("a");
+    int rc;
+
+    rc = json_decode("{\"a\":1,\"b\":", 12, &root);
+    check(st, rc != JSON_OK, "an unfinished object fails");
+    check(st, root.p == 0, "a failed decode returns no partial tree");
+
+    root = empty_ref();
+    rc = json_decode("[1,2,", 5, &root);
+    check(st, rc != JSON_OK, "an unfinished array fails");
+    check(st, root.p == 0, "an unfinished array returns no partial tree");
+
+    root = empty_ref();
+    rc = json_decode("{\"a\":1}", 7, &root);
+    check(st, rc == JSON_OK, "a valid document still decodes after failures");
+    check(st, json_member(root, key).p != 0, "the valid document has its member");
+    json_free(root);
+    key.release();
+}
+
 int main(void)
 {
     struct Stats st;
@@ -71,6 +148,9 @@ int main(void)
     st.failed = 0;
 
     nan_contract(&st);
+    error_position_contract(&st);
+    message_contract(&st);
+    cleanup_contract(&st);
 
     if (st.failed == 0) {
         printf("all checks passed\n");
