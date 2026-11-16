@@ -195,6 +195,7 @@ pub char *json_encode(JsonRef root);   // 成功返回 malloc 字符串，调用
 - 解析来源的数字输出原文；写入的整数输出十进制；写入的浮点格式待定。
 - 共享子对象出现两次时输出两份（与 `JSON.stringify` 一致，ADR-0003）。
 - 环：编码期用祖先栈或深度上限拒绝，返回 `NULL` 并置 `JSON_ERR_CYCLE`，不得死循环（ADR-0005）。
+- 非有限实数：NaN / +Inf / -Inf 返回 `NULL` 并置 `JSON_ERR_RANGE`，不得写出 `nan` / `inf`（D-006）。
 - 失败返回 `NULL`；调用方不 free `NULL`。
 
 ### 3.7 生命周期
@@ -230,6 +231,21 @@ pub int json_set(JsonRef root, Str path, JsonRef value);
 - 类型冲突与畸形路径在改动树之前校验，失败时树不变；段构造失败发生在该段写入前，之前已创建的中间对象可能保留。
 - 所有权与 `set` 一致：容器 retain 一份，调用方保留自己的句柄并负责 release。
 - 不支持数组下标段（`"a.0"` 是字面键 `"0"`），也不支持转义点号；键含 `.` 时直接用 `set`。
+
+
+### 3.9 错误位置与文案
+
+```ct
+pub int json_error_offset(void);   // 0-based 字节偏移
+pub int json_error_line(void);     // 1-based，按字节计列
+pub int json_error_column(void);
+pub char *json_message(int code);  // 静态非空文案，调用方不释放
+```
+
+- 位置只描述**最近一次** `json_decode` / `json_decode_strict` 的失败；成功时三个访问器都为 0。
+- `json_error_offset` 是 0-based 字节偏移；`json_error_line` / `json_error_column` 是 1-based，列按字节计（与 R-C-01 一致）。
+- `json_message` 对 15 个已知码返回非空静态文案，对未知码返回固定非空文案；调用方**不得** `free`。
+- 失败时 `out` 不被写入，已建节点释放；分配失败按库内 `j1_alloc` abort，不返回错误码。
 
 
 ## 四、J1–J14 在 0.1.0 的判定

@@ -1,12 +1,12 @@
 ---
 id: JSON-9
-status: open
+status: fixed
 priority: P1
 owner: 本包（编码）
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `fe6bb5a`；`set_double(NaN)` 后 `json_encode` 返回 `{"x":nan}`、`json_last_error()=0`
+evidence: 基线 `fe6bb5a`；`set_double(NaN)` 后 `json_encode` 返回 `{"x":nan}`、`json_last_error()=0`；修复提交 `fdd1b2c`（红证 `31a6798`）
 ---
 
 # JSON-9 NaN 编码输出非法 JSON
@@ -62,9 +62,10 @@ $ echo $?
 
 `json_encode` 返回 `NULL`，`json_last_error()` 为 `JSON_ERR_RANGE`（与 Inf 一致）。
 
-## 修复提示
+## 修复（`fdd1b2c`）
 
-`j1_enc_double` 开头加 `if (d != d) { b->bad = JSON_ERR_RANGE; return; }`；补一条负例断言「NaN 编码返回 NULL」。
+`j1_enc_double` 开头加 `if (d != d) { b->bad = JSON_ERR_RANGE; return; }`；
+`test/j5_errors.ct` 断言 NaN / Inf / -Inf 都返回 NULL + RANGE，合法 double 仍可编码。
 
 ## 阻塞点
 

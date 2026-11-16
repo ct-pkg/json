@@ -24,16 +24,16 @@
 | R-A-12 | 流首 BOM 与空白行为唯一 | 已满足 | ACC-12 | `ct build test/j4_decode.ct ... && /tmp/j4` | BOM 在宽松/严格两模式都报 -2；前后空白仍允许（D-002，`2a0ee7a`） | 本 phase |
 | R-B-01 | 追写器结构错误立即拒绝 | 不做 | ACC-13 | `grep -q 'JsonOut' src/json.h.ct` 期望 1（不存在） | 旧 `JsonOut` 不在包公开面，树编码由 `json_encode` 承担（D-006） | PH-6（文档明确） |
 | R-B-02 | 字符串转义 `"`、`\`、控制字节；非 ASCII 原样 | 已满足 | ACC-14 | `test/j1_roundtrip.ct` 的 `round trip: escapes`、`a NUL value round-trips` 与 `a 0x1F value round-trips` | `j1_enc_bytes`；JSON-12 修复后控制字节写 4 位（`5359fb4`） | 本 phase |
-| R-B-03 | 非有限实数必须拒绝，不得写出 nan/inf | 需变更 | ACC-15 | `probe: set_double(NaN) → json_encode` 期望 `NULL` + `JSON_ERR_RANGE` | 当前输出 `{"x":nan}`（JSON-9） | PH-5（JSON-9） |
+| R-B-03 | 非有限实数必须拒绝，不得写出 nan/inf | 已满足 | ACC-15 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j5_errors.ct -I src -o /tmp/j5 && /tmp/j5` | NaN / Inf / -Inf 返回 NULL + JSON_ERR_RANGE，合法 double 仍编码（`fdd1b2c`） | 本 phase |
 | R-B-04 | 字符串/键支持长度，含 `\u0000` 可往返 | 已满足 | ACC-16 | `test/j1_roundtrip.ct` 的 `nul_value_contract` 与 `a key with an embedded NUL is data` | 值/键均为 `Str`；NUL 值 encode→decode 保持 3 字节（JSON-12 修复后） | 本 phase |
 | R-B-05 | 输出缓冲不足可判定 | 不做 | ACC-17 | `grep -q 'JSON_EMIT_TRUNCATED' src/json.h.ct` 期望 1（不存在） | `json_encode` 分配缓冲返回，没有调用方缓冲可截断（D-006） | PH-6（文档明确） |
 | R-B-06 | 原生 Map/Vec 树可直接编码 | 不做 | ACC-18 | `grep -q 'encode(Map' src/json.h.ct` 期望 rc=1 | 树就是 `JsonObj`（Map 索引 + 保序数组）与 `JsonArr` 的组合，编码单入口 `json_encode(JsonRef)`；无独立 Map/Vec 编码入口（D-004/D-006） | PH-6（文档明确） |
 | R-B-07 | 能出就能读：编码输出可被本包解析且值等价 | 已满足 | ACC-19 | `test/j1_roundtrip.ct` 的 round trip 全组与 `a NUL value round-trips` | 文本往返 + NUL 值二次解码字节相等（JSON-12 修复后） | 本 phase |
-| R-C-01 | 解析失败给出稳定错误码与位置（offset/line/column） | 需变更 | ACC-20 | `grep -q 'json_error_offset' src/json.h.ct` 期望 0 | 当前只有 `json_last_error` 码，无 offset/行列（JSON-11） | PH-5（JSON-11） |
+| R-C-01 | 解析失败给出稳定错误码与位置（offset/line/column） | 已满足 | ACC-20 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j5_errors.ct -I src -o /tmp/j5 && /tmp/j5` | `{} {}` → offset 3 / 1:4；缺冒号 → 8 / 2:7；空输入 0 / 1:1；成功清零（`4f89a80`） | 本 phase |
 | R-C-02 | 解析错误与访问器错误分离 | 已满足 | ACC-21 | `test/j1_roundtrip.ct` 的 `decode leaves last_error at JSON_OK` + 访问器失败返回码 | 访问器返回 `JSON_ERR_TYPE/RANGE`，不改写 parse 状态（D-001 改写 READ_* 五值） | 本 phase |
-| R-C-03 | 错误码常量/文案/未知码成为公开契约或明确不作契约 | 需变更 | ACC-22 | `README.md` 冻结码表 + `json_message` 非空（计划） | 码表已是 `pub enum JsonCode`；无文案入口、README 未冻结（D-001） | PH-5 |
+| R-C-03 | 错误码常量/文案/未知码成为公开契约或明确不作契约 | 已满足 | ACC-22 | `test/j5_errors.ct` 的 message_contract | 15 个已知码非空静态文案、未知码固定文案；`JsonCode` 数值冻结（`4f89a80`，D-001） | 本 phase |
 | R-C-04 | 非错误情况不误报；严格 RFC 8259 | 已满足 | ACC-23 | `bash tools/check.sh g3` 的 error_contract（注释/尾逗号/NaN/+1 报错） | 20 条错误用例逐条核对 code | 本 phase |
-| R-C-05 | 解码失败不返回部分树、资源可判定 | 需变更 | ACC-24 | `test/j1_roundtrip.ct` 失败用例 + ASan 运行（计划） | `out` 失败不动已满足；失败路径的部分节点释放无用例（D-001） | PH-5 |
+| R-C-05 | 解码失败不返回部分树、资源可判定 | 已满足 | ACC-24 | `test/j5_errors.ct` 的 cleanup_contract + ASan | 失败时 out 不动、已建节点释放，ASan 0 命中；OOM 走 `j1_alloc` abort（D-001 注记，平台 LSan 缺口另记） | 本 phase |
 | R-D-01 | 树为唯一公开模型 | 已满足 | ACC-25 | `grep -q 'pub struct JsonRef' src/json.h.ct` + `json.h.ct` 模型注释 | ADR-0001；视图仅 `json.ct` 历史文件 | 本 phase |
 | R-D-02 | 异构值有 tag 判别，映射到 JSON kind | 已满足 | ACC-26 | `test/j1_roundtrip.ct` 的 `root tag is JSON_TAG_OBJ` 等 | `JsonTag` + 具名 `JsonValue` union | 本 phase |
 | R-D-03 | 所有权与释放规则唯一、可验证 | 已满足 | ACC-27 | `test/j1_roundtrip.ct` 的 lifecycle_contract + `bash tools/check.sh g7` 的 ASan | 引用计数；容器显式循环释放 `[0,len)` | 本 phase |
@@ -54,9 +54,9 @@
 
 | 判定 | 条数 |
 | --- | --- |
-| 已满足 | 25 |
+| 已满足 | 29 |
 | 需新增 | 2 |
-| 需变更 | 9 |
+| 需变更 | 5 |
 | 待确认 | 0 |
 | 不做 | 3 |
 | 合计 | 39 |
@@ -104,14 +104,18 @@
 | `set_null` | 方法 | ACC-31 |
 | `remove` | 方法 | ACC-32 |
 | `json_set` | 函数 | ACC-39 |
+| `json_error_offset` | 函数 | ACC-20 |
+| `json_error_line` | 函数 | ACC-20 |
+| `json_error_column` | 函数 | ACC-20 |
+| `json_message` | 函数 | ACC-22 |
 
 ## 4. 缺口登记
 
 | Issue | 需求 | 现象 | 去向 |
 | --- | --- | --- | --- |
-| JSON-9 | R-B-03 | `set_double(NaN)` 后 `json_encode` 输出 `{"x":nan}`，不是合法 JSON | PH-5 |
+| JSON-9 | R-B-03 | `set_double(NaN)` 后 `json_encode` 输出 `{"x":nan}`；已修（`fdd1b2c`） | 已收口 |
 | JSON-10 | R-A-09 | `json_as_double("1e999")` 返回 inf 且 rc=0；已修（`a57502b`），期望 `JSON_ERR_RANGE` | 已收口 |
-| JSON-11 | R-A-01、R-C-01 | 解析失败只有错误码，没有 offset/line/column | PH-5 |
+| JSON-11 | R-A-01、R-C-01 | 解析失败只有错误码；已补 offset/line/column（`4f89a80`） | 已收口 |
 | JSON-12 | R-B-02、R-B-04、R-B-07 | 控制字节转义写 6 位，含 NUL 的值编码后 3 字节变 5 字节（`5359fb4` 已修） | PH-5（复核回归） |
 
 ## 5. 与 roadmap 的对应
@@ -120,5 +124,5 @@
 | --- | --- |
 | PH-3 | R-D-09（ACC-39）、R-D-08（复核）、R-D-03（证据） |
 | PH-4 | R-A-08、R-A-09（JSON-10）、R-A-10、R-A-11（复核 D-005）、R-A-12（补用例） |
-| PH-5 | R-A-01、R-B-03（JSON-9）、R-C-01（JSON-11）、R-C-03、R-C-05；R-B-04/R-B-07 已满足，只做回归复核 |
+| PH-5 | 本 phase 收口 R-A-01、R-B-03（JSON-9）、R-C-01（JSON-11）、R-C-03、R-C-05；R-B-04/R-B-07 已满足 |
 | PH-6 | R-B-01、R-B-05、R-B-06（文档明确不做）、R-E-02、R-E-03、R-E-04、R-E-05、R-E-06；R-E-01 已满足，只做复核 |

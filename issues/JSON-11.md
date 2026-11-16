@@ -1,12 +1,12 @@
 ---
 id: JSON-11
-status: open
+status: fixed
 priority: P2
 owner: 本包（解码错误）
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `fe6bb5a`；`grep -n 'json_error_offset' src/json.h.ct` 无输出；`json_decode("{} {}", 5)` 返回 -3 但调用方拿不到 offset
+evidence: 基线 `fe6bb5a`；`grep -n 'json_error_offset' src/json.h.ct` 无输出；修复提交 `4f89a80`（红证 `f3d37ce`）
 ---
 
 # JSON-11 解析错误只有码，没有 offset/行列
@@ -51,9 +51,11 @@ rc=-3 err=-3
 - `json_error_line()` / `json_error_column()`：1-based，列按字节计。
 - `"{} {}"` → offset 3；空输入 → offset 0；失败后 root 仍为空。
 
-## 修复提示
+## 修复（`4f89a80`）
 
-parser 已有位置字段（`p->pos`）；在 `j1_fail` 记录 offset，decode 开头清零；行列按需扫描并在 README/spec 冻结语义。
+`j1_place` 在 `j1_fail` 记录 `p->pos`，并扫描 `[0,pos)` 算 1-based 行列；
+`json_error_offset/line/column` 读取；decode 开头清零，成功保持 0。
+`test/j5_errors.ct` 覆盖 `{} {}` → 3 / 1:4、缺冒号 → 8 / 2:7、空输入 → 0 / 1:1。
 
 ## 阻塞点
 
