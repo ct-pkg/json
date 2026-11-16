@@ -1035,6 +1035,11 @@ static void j1_enc_double(struct J1Buf *b, double d)
 {
     char tmp[64];
     int k;
+    /* NaN compares false against everything, so it needs its own check. */
+    if (d != d) {
+        b->bad = JSON_ERR_RANGE;
+        return;
+    }
     if (d > 1.7976931348623157e308 || d < -1.7976931348623157e308) {
         b->bad = JSON_ERR_RANGE;
         return;
