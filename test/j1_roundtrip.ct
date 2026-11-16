@@ -496,6 +496,7 @@ static void numeric_edges(struct Stats *st)
 {
     JsonRef root = empty_ref();
     char *text = "{\"max\":9223372036854775807,\"min\":-9223372036854775808,\"over\":9223372036854775808}";
+    char *doubles = "{\"huge\":1e999,\"nhuge\":-1e999,\"tiny\":1e-400,\"prec\":0.30000000000000004}";
     long long iv = 0;
     double dv = 0.0;
     int rc;
@@ -509,6 +510,19 @@ static void numeric_edges(struct Stats *st)
     check(st, json_as_int(member_cstr(root, "max"), &iv) == JSON_OK && iv == 9223372036854775807LL, "int64 max is exact");
     check(st, json_as_int(member_cstr(root, "over"), &iv) == JSON_ERR_RANGE, "int64 max + 1 is a range error");
     check(st, json_as_double(member_cstr(root, "min"), &dv) == JSON_OK, "int64 min is readable as a double");
+    json_free(root);
+
+    root = empty_ref();
+    rc = json_decode(doubles, (int)strlen(doubles), &root);
+    check(st, rc == JSON_OK, "double edges decode");
+    if (rc != JSON_OK) return;
+
+    dv = 0.0;
+    check(st, json_as_double(member_cstr(root, "huge"), &dv) == JSON_ERR_RANGE, "1e999 is a range error");
+    check(st, dv == 0.0, "a range error leaves out untouched");
+    check(st, json_as_double(member_cstr(root, "nhuge"), &dv) == JSON_ERR_RANGE, "-1e999 is a range error");
+    check(st, json_as_double(member_cstr(root, "tiny"), &dv) == JSON_OK && dv == 0.0, "1e-400 underflows to 0.0");
+    check(st, json_as_double(member_cstr(root, "prec"), &dv) == JSON_OK && dv == 0.30000000000000004, "a decimal is bit exact");
     json_free(root);
 }
 
