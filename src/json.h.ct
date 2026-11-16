@@ -101,6 +101,17 @@ pub void json_free(JsonRef v);
    to JSON_OK at the start of each call. */
 pub int json_last_error(void);
 
+/* R-C-01: position of the most recent parse failure. `json_error_offset` is a
+   0-based byte offset; line and column are 1-based and count bytes. A
+   successful decode resets all three to 0. */
+pub int json_error_offset(void);
+pub int json_error_line(void);
+pub int json_error_column(void);
+
+/* R-C-03: a non-empty static description for a known code, or a fixed
+   non-empty string for an unknown one. The caller must not free it. */
+pub char *json_message(int code);
+
 /* The container drop order is fixed: release `[0, len)` elements, then free
    the element/key arrays, then the container itself. Slots in `[len, cap)`
    were never constructed and are not touched. */
@@ -215,6 +226,9 @@ pub int json_set(JsonRef root, Str path, JsonRef value);
 #define J1_ENC_DEPTH_LIMIT 256
 
 static int j1_last_error = 0;
+static int j1_err_pos = 0;
+static int j1_err_line = 0;
+static int j1_err_col = 0;
 
 struct J1Parser {
     char *src;
@@ -312,6 +326,41 @@ pub void json_free(JsonRef v)
 pub int json_last_error(void)
 {
     return j1_last_error;
+}
+
+pub int json_error_offset(void)
+{
+    return j1_err_pos;
+}
+
+pub int json_error_line(void)
+{
+    return j1_err_line;
+}
+
+pub int json_error_column(void)
+{
+    return j1_err_col;
+}
+
+pub char *json_message(int code)
+{
+    if (code == JSON_OK) return "ok";
+    if (code == JSON_ERR_EOF) return "unexpected end of input";
+    if (code == JSON_ERR_SYNTAX) return "syntax error";
+    if (code == JSON_ERR_TRAILING) return "trailing data after the root value";
+    if (code == JSON_ERR_STRING) return "invalid string";
+    if (code == JSON_ERR_ESCAPE) return "unknown escape";
+    if (code == JSON_ERR_UNICODE) return "invalid unicode escape";
+    if (code == JSON_ERR_SURROGATE) return "lone surrogate";
+    if (code == JSON_ERR_NUMBER) return "invalid number";
+    if (code == JSON_ERR_DEPTH) return "nesting too deep";
+    if (code == JSON_ERR_MEMORY) return "out of memory";
+    if (code == JSON_ERR_TYPE) return "type mismatch";
+    if (code == JSON_ERR_RANGE) return "out of range";
+    if (code == JSON_ERR_CYCLE) return "cycle in the tree";
+    if (code == JSON_ERR_UTF8) return "invalid UTF-8";
+    return "unknown error code";
 }
 
 static JsonObj *j1_obj_new(void)
@@ -447,9 +496,31 @@ static void j1_obj_reindex(JsonObj *o)
     for (i = 0; i < o->len; i = i + 1) o->index->put(o->keys[i], i);
 }
 
+/* Records the byte offset and the 1-based line/column of the first failure.
+   Column counts bytes, matching R-C-01. */
+static void j1_place(struct J1Parser *p, int pos)
+{
+    int i;
+    j1_err_pos = pos;
+    j1_err_line = 1;
+    j1_err_col = 1;
+    if (p->src == 0) return;
+    for (i = 0; i < pos && i < p->len; i = i + 1) {
+        if (p->src[i] == '\n') {
+            j1_err_line = j1_err_line + 1;
+            j1_err_col = 1;
+        } else {
+            j1_err_col = j1_err_col + 1;
+        }
+    }
+}
+
 static void j1_fail(struct J1Parser *p, int code)
 {
-    if (p->err == 0) p->err = code;
+    if (p->err == 0) {
+        p->err = code;
+        j1_place(p, p->pos);
+    }
 }
 
 static void j1_ws(struct J1Parser *p)
@@ -920,12 +991,18 @@ static int j1_decode(char *text, int len, JsonRef *out, int strict)
     struct J1Parser p;
     JsonRef root = j1_empty();
     j1_last_error = JSON_OK;
+    j1_err_pos = 0;
+    j1_err_line = 0;
+    j1_err_col = 0;
     if (out == 0) {
         j1_last_error = JSON_ERR_TYPE;
         return JSON_ERR_TYPE;
     }
     if (text == 0 || len <= 0) {
         j1_last_error = JSON_ERR_EOF;
+        j1_err_pos = 0;
+        j1_err_line = 1;
+        j1_err_col = 1;
         return JSON_ERR_EOF;
     }
     p.src = text;
@@ -942,6 +1019,7 @@ static int j1_decode(char *text, int len, JsonRef *out, int strict)
     if (p.pos != p.len) {
         j1_node_destroy(root.p);
         j1_last_error = JSON_ERR_TRAILING;
+        j1_place(&p, p.pos);
         return JSON_ERR_TRAILING;
     }
     out->p = root.p;
