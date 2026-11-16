@@ -323,8 +323,8 @@ AI_ENGINEERING_SPEC=<主规范路径> ...                          # 覆盖默�
 | 任务-对话映射 | [docs/session-map.md](docs/session-map.md) |
 | 门禁入口 | 未建（当前验收是单文件编译 + `json.expected.out` 比对；`tools/check.sh` 待建） |
 | 文档 snippet | [docs/snippets/](docs/snippets/README.md)（首个可运行示例已收口） |
-| Issue 台账 | [issues/](issues/)（前缀 `JSON-<n>`，当前 3 条） |
-| 决策记录 | [DECISIONS.md](DECISIONS.md)（实现期取舍；需求层裁定见 [docs/requirements.md](docs/requirements.md)） |
+| Issue 台账 | [issues/](issues/)（前缀 `JSON-<n>`，当前 4 条） |
+| 决策记录 | [docs/decisions/](docs/decisions/README.md)（规范 `D-<n>`，唯一新增入口）；历史：[DECISIONS.md](DECISIONS.md)、[docs/adr/](docs/adr/) 只读；需求层裁定见 [docs/requirements.md](docs/requirements.md) |
 | 版本落点 | `ct.pkg#version`（README 尚无版本行，收口时需要时补） |
 | 偏离项 | 无（见 0.3） |
 
@@ -332,9 +332,9 @@ AI_ENGINEERING_SPEC=<主规范路径> ...                          # 覆盖默�
 
 | 触发话术（用户或角色说） | 动作 | 产物 |
 | --- | --- | --- |
-| "开个新 phase" / "开始 J<n>" | 先出卡再开工：退出判据、任务清单、`version-minor` 写进卡片 | `docs/phases/J<n>.md`、`docs/session-map.md` |
+| "开个新 phase" / "开始 PH-<n>"（历史别名 `J<n>`） | 先出卡再开工：退出判据、任务清单、`version-minor` 写进卡片 | `docs/phases/PH-<n>/card.md`、`docs/planning/roadmap.md`、`docs/session-map.md` |
 | "现在你是 <角色>" / 切换角色 | 先落 handoff，再按新角色落笔 | `handoff/<id>.md` |
-| "打 tag" / "发版" / "建远端" | 只出提案，不执行；等用户显式指令 | tag / 远端提案、发布清单 |
+| "打 tag" / "发版" / "建远端" | phase tag 随收口自动创建并推送（6.7 V-7）；分支推送与对外发布只出提案，等用户显式指令 | tag / 远端提案、发布清单 |
 | "放宽一下" / "跳过门禁" | 拒绝；改走 `deviation:` 或先改主规范（S7） | `deviation:` 条目 + 用户签字 |
 | "先这样" / "算历史遗留" | 不接；按 6.7 V-6 立案 | `issues/<id>.md` |
 | "修一下 <X>" | 先复现、先红后绿；一处缺陷一次 fix，PATCH +1 | 红证提交 + 修复提交 |
