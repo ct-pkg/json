@@ -367,6 +367,48 @@ static void subscript_contract(struct Stats *st)
     json_free(root);
 }
 
+/* CT v0.62.0 lifted the temporary-receiver limits that JSON-1 / JSON-2
+ * recorded. These assertions pin the three shapes that used to fail:
+ * three-level subscripts (declaration and assignment), a method on a
+ * subscript result, and a chain of method results. */
+static void chain_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef c;
+    JsonRef b;
+    Str k = str_from("host");
+    char *text = "{\"a\":{\"b\":{\"c\":1}},\"server\":{\"host\":\"h\"}}";
+    int present;
+    long long iv = 0;
+    int rc;
+
+    rc = json_decode(text, (int)strlen(text), &root);
+    check(st, rc == JSON_OK, "chain fixture decodes");
+    if (rc != JSON_OK) {
+        k.release();
+        return;
+    }
+
+    c = root["a"]["b"]["c"];
+    check(st, json_as_int(c, &iv) == JSON_OK && iv == 1, "3-level chain decl init");
+
+    c = empty_ref();
+    c = root["a"]["b"]["c"];
+    check(st, json_as_int(c, &iv) == JSON_OK && iv == 1, "3-level chain assign rhs");
+
+    b = root.get("a").get("b");
+    check(st, json_tag(b) == JSON_TAG_OBJ, "method-result chain receiver");
+
+    present = root["server"].has(k);
+    check(st, present == 1, "method on subscript result");
+
+    b = root["a"].get("b");
+    check(st, json_tag(b) == JSON_TAG_OBJ, "method on subscript chain");
+
+    k.release();
+    json_free(root);
+}
+
 static void cycle_contract(struct Stats *st)
 {
     JsonRef root = empty_ref();
@@ -490,6 +532,7 @@ int main(void)
     array_write_contract(&st);
     write_contract(&st);
     subscript_contract(&st);
+    chain_contract(&st);
     cycle_contract(&st);
     numeric_edges(&st);
     error_contract(&st);
