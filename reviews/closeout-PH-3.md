@@ -18,8 +18,9 @@
 
 ```console
 $ CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j3_json_set.ct -I src -o /tmp/j3 && /tmp/j3 | tail -3
-ok 54 json_set created the nested x object
-ok 55 the literal dotted key is untouched
+ok 53 overwrite the first key
+ok 54 overwrite keeps the first key position
+ok 55 overwrite keeps the object size
 all checks passed
 $ /tmp/j3 | grep -c '^ok '
 55
