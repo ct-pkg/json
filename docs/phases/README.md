@@ -71,7 +71,7 @@
 
 | 编号 | 目标 | 状态 | 卡片 |
 | --- | --- | --- | --- |
-| PH-1 | J1 收口：链式访问解禁与 JSON-1/2 收口 | in-progress | [card.md](PH-1/card.md) |
+| PH-1 | J1 收口：链式访问解禁与 JSON-1/2 收口 | closed（2026-11-17，v0.1.1） | [card.md](PH-1/card.md)、[收口报告](../../reviews/closeout-PH-1.md) |
 | PH-2 | 需求基线与验收映射（R-* → ACC-*） | 待开卡 | — |
 | PH-3 | J3 函数式写入 `json_set` | 待开卡 | — |
 | PH-4 | 解码边界（UTF-8、精度、深度、查找、BOM） | 待开卡 | — |

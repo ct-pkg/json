@@ -10,3 +10,4 @@
 | 2026-11-16 | 门禁 g0–g9 接入与负例红证（`59e3803`、`3107b0b`） | [tools/check.sh](../tools/check.sh)、[docs/evidence/gate-negatives.md](evidence/gate-negatives.md) |
 | 2026-11-16 | 立项：PH-1（J1 收口）开卡，PH-2…PH-6 排入 roadmap | [docs/phases/PH-1/card.md](phases/PH-1/card.md)、[docs/planning/roadmap.md](planning/roadmap.md) |
 | 2026-11-17 | phase 规划评估：补齐门禁接入与 Q 项归属，修正 g7 基线红 | [roadmap.md](planning/roadmap.md)、[status.md](status.md)、[JSON-7](../issues/JSON-7.md) |
+| 2026-11-17 | PH-1 收口：J1 链式读回归、样例、规范/README 与台账；tag `v0.1.1` | [reviews/closeout-PH-1.md](../reviews/closeout-PH-1.md)、[PH-1 卡](phases/PH-1/card.md)、[CHANGELOG](../CHANGELOG.md) |

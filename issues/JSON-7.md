@@ -6,7 +6,7 @@ owner: 本包（门禁负例夹具）
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `dce8ee9`；`bash tools/check.sh g7` rc=1，命中 `tools/negatives/run.sh:97` 的假密钥字面量；修复提交 `171985d`
+evidence: 基线 `dce8ee9`；`bash tools/check.sh g7` rc=1，命中 `tools/negatives/run.sh:97` 的假密钥字面量；修复提交 `1d405a9`（`171985d` 改负例脚本，`1d405a9` 脱敏台账后 g7 才转绿）
 ---
 
 # JSON-7 g7 密钥扫描把负例夹具自身当命中
@@ -38,7 +38,7 @@ $ echo $?
 
 ## 处置（fixed 时写）
 
-2026-11-17（修复提交 `171985d`）：负例脚本改为运行时拼装凭据（`printf 'token AKIA%s\n' 'ABCDEFGHIJKLMNOP'`），
+2026-11-17（`171985d` 改脚本，`1d405a9` 脱敏台账）：负例脚本改为运行时拼装凭据（`printf 'token AKIA%s\n' 'ABCDEFGHIJKLMNOP'`），
 仓库里不再出现完整密钥字面量；g7 本体不放宽、不排除 `tools/`。
 
 ```console
@@ -54,4 +54,8 @@ $ echo $?
 0
 ```
 
-版本：属 V-4 的「测试夹具自身修正」，不 +PATCH；无产品行为变化。
+两点补充：
+
+- `171985d` 只改了 `tools/negatives/run.sh`；本文件当时仍逐字引用假密钥，g7 在该提交上仍红。
+  `1d405a9` 把本文件的引用脱敏后才转绿，因此 `fixed` 的修复 sha 记 `1d405a9`。
+- 版本：属 V-4 的「测试夹具自身修正」，不 +PATCH；无产品行为变化。

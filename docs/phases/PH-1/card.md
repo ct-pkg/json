@@ -4,7 +4,7 @@
 - phase 目录：`docs/phases/PH-1/`
 - version-minor：1
 - 规范版本：1.15.0
-- 状态：in-progress
+- 状态：closed
 - criteria-sha256：d92c647b8a1fefce6b4bde713d7ec50627f5f392187d1da8684a48d843dbd3c3
 - tasks-sha256：a717981c75ad4916398ce8509cf74e07546901f7fd77140ea86f544bd16ce5cc
 
@@ -102,3 +102,11 @@
 | 4 | 打 annotated tag 并推送该 tag（V-7） | `v0.1.1` |
 | 5 | 写收口回顾（`lessons` 带 `landing`） | `reviews/closeout-PH-1.md` |
 | 6 | 更新 `docs/session-map.md` 与本目录清单 | 同上 |
+
+## 10. 收口记录（2026-11-17）
+
+- 退出判据 E-P1-1…E-P1-5 逐条通过，原始输出见 [reviews/closeout-PH-1.md](../../../reviews/closeout-PH-1.md)。
+- 版本四项核对：`ct.pkg#version = 0.1.1`，MINOR=1=PH-1，PATCH=1 来自 JSON-4 的一次 fix；本 phase 窗口内无 fix，版本不移动。
+- Issue 去向：JSON-1/2 本 phase 收口；JSON-5/6 登记语言层；JSON-7 本 phase 收口；JSON-3 语言层。
+- tag：`v0.1.1`（annotated），随收口提交创建并推送（6.7 V-7）。
+- 未覆盖：g2 归 PH-2，g4/g5 归 PH-6；不宣称全门禁绿。
