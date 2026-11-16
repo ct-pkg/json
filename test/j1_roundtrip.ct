@@ -371,6 +371,11 @@ static void subscript_contract(struct Stats *st)
  * recorded. These assertions pin the three shapes that used to fail:
  * three-level subscripts (declaration and assignment), a method on a
  * subscript result, and a chain of method results. */
+static JsonRef chain_pick(JsonRef doc)
+{
+    return doc["a"]["b"]["c"];
+}
+
 static void chain_contract(struct Stats *st)
 {
     JsonRef root = empty_ref();
@@ -395,6 +400,9 @@ static void chain_contract(struct Stats *st)
     c = empty_ref();
     c = root["a"]["b"]["c"];
     check(st, json_as_int(c, &iv) == JSON_OK && iv == 1, "3-level chain assign rhs");
+
+    c = chain_pick(root);
+    check(st, json_as_int(c, &iv) == JSON_OK && iv == 1, "3-level chain return pos");
 
     b = root.get("a").get("b");
     check(st, json_tag(b) == JSON_TAG_OBJ, "method-result chain receiver");
