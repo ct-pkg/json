@@ -185,6 +185,14 @@ pub JsonRef json_member(JsonRef v, Str key);
    `len`; 0 out of range. */
 pub char *json_obj_key_at(JsonRef v, int i, int *len);
 
+/* R-D-09: write `value` at the dot-separated object path `path` under `root`.
+   Missing intermediate objects are created. A root or intermediate that is not
+   an object answers JSON_ERR_TYPE without touching the tree; an empty path or
+   an empty path segment answers JSON_ERR_RANGE; an empty value handle is a
+   type error. The container retains its own reference on `value`, so the
+   caller keeps and releases its handle (same contract as `v.set`). */
+pub int json_set(JsonRef root, Str path, JsonRef value);
+
 /* Members of `JsonRef` (all `pub`, so the subscript protocol also works across
    units):
      get(char *key)             v["key"]            borrowed handle
@@ -319,6 +327,14 @@ static JsonArr *j1_arr_new(void)
     a->cap = 0;
     a->items = 0;
     return a;
+}
+
+/* Creates one empty object node; the caller owns the returned reference. */
+static JsonRef j1_new_obj_ref(void)
+{
+    JsonRef r = j1_node_make(JSON_TAG_OBJ);
+    r.p->v.obj = j1_obj_new();
+    return r;
 }
 
 static int j1_obj_grow(JsonObj *o)
@@ -1178,6 +1194,72 @@ pub char *json_obj_key_at(JsonRef v, int i, int *len)
 }
 
 /* ------------------------------------------------- members and arrays */
+
+/* R-D-09 implementation. Two passes: the first rejects malformed paths and
+   type conflicts before any mutation; the second creates the missing
+   intermediates and stores the leaf. Allocation failure in the second pass can
+   leave the created prefix behind and answers JSON_ERR_MEMORY. */
+pub int json_set(JsonRef root, Str path, JsonRef value)
+{
+    JsonRef cur;
+    JsonRef child;
+    JsonRef fresh;
+    Str seg;
+    int start;
+    int i;
+    int last;
+
+    if (root.p == 0 || root.p->tag != JSON_TAG_OBJ) return JSON_ERR_TYPE;
+    if (path.data == 0 || path.len <= 0) return JSON_ERR_RANGE;
+    if (value.p == 0) return JSON_ERR_TYPE;
+
+    cur = root;
+    start = 0;
+    for (i = 0; i <= path.len; i = i + 1) {
+        last = (i == path.len);
+        if (!last && path.data[i] != '.') continue;
+        if (i == start) return JSON_ERR_RANGE;
+        if (last) break;
+        seg = str_from_len(path.data + start, i - start);
+        if (seg.len < 0) return JSON_ERR_MEMORY;
+        child = json_member(cur, seg);
+        seg.release();
+        start = i + 1;
+        if (child.p == 0) break;
+        if (child.p->tag != JSON_TAG_OBJ) return JSON_ERR_TYPE;
+        cur = child;
+    }
+
+    cur = root;
+    start = 0;
+    for (i = 0; i <= path.len; i = i + 1) {
+        last = (i == path.len);
+        if (!last && path.data[i] != '.') continue;
+        seg = str_from_len(path.data + start, i - start);
+        if (seg.len < 0) return JSON_ERR_MEMORY;
+        if (last) {
+            json_retain(value);
+            j1_obj_store(cur, seg, value);
+            child = json_member(cur, seg);
+            seg.release();
+            return child.p == 0 ? JSON_ERR_MEMORY : JSON_OK;
+        }
+        child = json_member(cur, seg);
+        if (child.p == 0) {
+            fresh = j1_new_obj_ref();
+            j1_obj_store(cur, seg, fresh);
+            child = json_member(cur, seg);
+            if (child.p == 0) {
+                seg.release();
+                return JSON_ERR_MEMORY;
+            }
+        }
+        cur = child;
+        seg.release();
+        start = i + 1;
+    }
+    return JSON_OK;
+}
 
 impl JsonRef {
     /* Subscript protocol entry: `v["key"]` lowers to `v.get("key")` (Phase 52).
