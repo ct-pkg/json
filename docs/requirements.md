@@ -144,6 +144,7 @@
 | R-D-06 | 字符串在树中必须保留长度与内嵌 NUL；键的限制必须明确 | ① 值用 `Str`；`"a\u0000b"` 的 len=3 且字节相等；② 键一律 `Str`（Q-1 裁定 A），插入深拷贝、可含 `\u0000`；③ `get`/`set` 的 `char *` 仅作下标协议适配 | 已改（Q-1 A） | 新规范 §七；`strkey` / `pStrKey` 实测 |
 | R-D-07 | 缺键与 null 值必须可区分 | ① `get` 缺键返回 `p == NULL` 的空句柄；② `has(Str)` 显式判在不在；③ null 值返回有效句柄且 `json_tag` 为 `JSON_TAG_NULL` | 已改 | 新规范 §3.2 |
 | R-D-08 | 重复键在树模型中的位置与值必须固定 | ① last-wins；② 覆盖时保留首次出现位置、只换值；③ 与视图 `member` 的 last-wins 一致 | 需新增 | 新规范 §3.3 |
+| R-D-09 | 路径写入：`json_set(root, path, value)` 按点分对象路径写入 | ① 缺失中间对象自动创建，覆盖保持首次位置；② 空路径/空段 `JSON_ERR_RANGE`，非对象根/中间、空值 `JSON_ERR_TYPE`；③ 类型冲突不改树；④ 容器 retain，调用方 release 后仍在 | 需新增 | PH-3；ACC-39 |
 
 ### 4.5 E 组：工程与交付
 

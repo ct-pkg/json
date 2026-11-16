@@ -42,6 +42,7 @@
 | R-D-06 | 字符串保留长度与内嵌 NUL；键限制明确 | 已满足 | ACC-30 | `test/j1_roundtrip.ct` 的 `a key with an embedded NUL is data` | 值 `Str`；键 `Str` 深拷贝 | 本 phase |
 | R-D-07 | 缺键与 null 值可区分 | 已满足 | ACC-31 | `test/j1_roundtrip.ct` 的 `explicit null answers a node` 与 `is_null` | 空句柄 vs tag 0 | 本 phase |
 | R-D-08 | 重复键位置与值固定（last-wins，保首位） | 已满足 | ACC-32 | `test/j1_roundtrip.ct` 的 `overwriting keeps the key position` 与 duplicate round trip | `j1_obj_put` 命中即换值、位置不变 | 本 phase |
+| R-D-09 | 点分对象路径写入 `json_set` | 需新增 | ACC-39 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j3_json_set.ct -I src -o /tmp/j3 && /tmp/j3` | 35 条断言：新建/覆盖/保位、失败契约、所有权（PH-3） | 本 phase |
 | R-E-01 | 包可 import，不需复制单文件 | 已满足 | ACC-33 | `bash tools/check.sh g0` 的 `ct pkg check` + `test/pkg/consumer.ct` | JSON-4 修复；`import json::src::json;` | 本 phase |
 | R-E-02 | 公开面最小且可枚举，实现细节不进生成头 | 需变更 | ACC-34 | `grep -c '^pub ' src/json.h.ct` + 导出清单脚本（计划） | 现有 `pub` 清单可枚举；无冻结脚本/清单文件 | PH-6 |
 | R-E-03 | 许可与同批包及上游一致 | 需变更 | ACC-35 | `grep -q '^## License' README.md`（计划） | `ct.pkg#licence` 与 `LICENSE` 为 MIT；README 无许可段，三处不一致 | PH-6 |
@@ -54,11 +55,11 @@
 | 判定 | 条数 |
 | --- | --- |
 | 已满足 | 23 |
-| 需新增 | 2 |
+| 需新增 | 3 |
 | 需变更 | 10 |
 | 待确认 | 0 |
 | 不做 | 3 |
-| 合计 | 38 |
+| 合计 | 39 |
 
 ## 3. 公开接口索引
 
@@ -101,6 +102,7 @@
 | `set_bool` | 方法 | ACC-05 |
 | `set_null` | 方法 | ACC-31 |
 | `remove` | 方法 | ACC-32 |
+| `json_set` | 函数 | ACC-39 |
 
 ## 4. 缺口登记
 
@@ -115,7 +117,7 @@
 
 | phase | 本表里归它的条目 |
 | --- | --- |
-| PH-3 | 无（写能力的新需求在 PH-3 卡另行编号） |
+| PH-3 | R-D-09（ACC-39）、R-D-08（复核）、R-D-03（证据） |
 | PH-4 | R-A-08、R-A-09（JSON-10）、R-A-10、R-A-11（复核 D-005）、R-A-12（补用例） |
 | PH-5 | R-A-01、R-B-03（JSON-9）、R-C-01（JSON-11）、R-C-03、R-C-05；R-B-04/R-B-07 已满足，只做回归复核 |
 | PH-6 | R-B-01、R-B-05、R-B-06（文档明确不做）、R-E-02、R-E-03、R-E-04、R-E-05、R-E-06；R-E-01 已满足，只做复核 |

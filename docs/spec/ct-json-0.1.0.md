@@ -111,7 +111,7 @@ impl JsonRef {
 
 - `v["server"]` 展开为 `v.get("server")`（v0.53.0 沿用 Phase 52 协议）。
 - `get` 返回句柄；键不存在时 `p == NULL`，用 `has` 区分「缺失」与「值为 null」。
-- 单层可用；**不能写成 `v["a"]["b"]`**（方法结果作接收者，见 §五）。
+- 单层与多级读链都可用（v0.62.0：`v["a"]["b"]["c"]` 在声明初始化/赋值/return 位置均可，见 §五）；写链仍不可用（JSON-6）。
 - 键强制 `Str`（Q-1 裁定 A）：`get` 内部把传入的 `char *` 立即转成 `Str` 查找，临时 `Str` 由 `get` 释放；不把 `char *` 存进容器。
 - **协议例外（已确认）**：Q-1 要求「传 `char *` 是编译错误」，但 v0.53.0 的下标协议把字面量按 `char *` 传给 `get`。若 `get` 声明为 `Str`，`v["k"]` 在 C 层报 `passing 'char[2]' to parameter of incompatible type 'struct Str'`（实测）。因此 `get(char *)` 是唯一的 `char *` 入口，只作协议适配；其余键 API 一律收 `Str`，并在文档中明示为例外而非遗漏。
 - **键类型的诊断来自 C 层（实测顺序）**：调用 `json_member(v, "k")` 时，CT 先报 `type mismatch: 'json_member' argument 2: expected 'struct Str', got 'char *'`，这是一条 **warning**，构建继续；随后 C 编译器报 `passing 'char[2]' to parameter of incompatible type 'struct Str'` 并让构建失败。也就是说拦住 `char *` 键的是 cc 的类型检查，不是 CT 的键类型检查；不要把这条 warning 当作已拦截。
@@ -212,6 +212,21 @@ pub void json_free(JsonRef v);   // 等价于 json_release 一次
 - 实现限制（实测）：v0.53.0 为泛型容器生成的用户 struct `__elem_release` 是空体（`(void)e;`），只有 `Str` 等内建类型会真正 release。因此 ct-json **不把 `JsonRef` 放进 `Vec`/`Map` 后依赖它们的 release**，而用 `JsonArr`/`JsonObj` 自己显式循环；「容器负责」由容器代码完成，不依赖编译器为泛型生成元素 drop。
 - 自定义释放：需要时显式写 `impl Drop` 并说明释放什么；**不要求空 `impl Drop`**（ADR-0001 规则 4 降级）。
 - `json_free` 之后该句柄不得再用。
+
+### 3.8 路径写入（PH-3）
+
+```ct
+pub int json_set(JsonRef root, Str path, JsonRef value);
+```
+
+按点分对象路径写入，例如 `"a.b.c"`。
+
+- 缺失的中间对象自动创建；最后一段不存在则追加，已存在则替换且保持首次位置（R-D-08）。
+- 失败：空路径或空段（`"a..b"`、`".a"`、`"a."`）→ `JSON_ERR_RANGE`；根或中间不是对象 → `JSON_ERR_TYPE`；`value` 是空句柄 → `JSON_ERR_TYPE`；分配失败 → `JSON_ERR_MEMORY`。
+- 类型冲突在改动树之前校验，失败时树不变；分配失败允许留下已创建的前缀并返回 `JSON_ERR_MEMORY`。
+- 所有权与 `set` 一致：容器 retain 一份，调用方保留自己的句柄并负责 release。
+- 不支持数组下标段（`"a.0"` 是字面键 `"0"`），也不支持转义点号；键含 `.` 时直接用 `set`。
+
 
 ## 四、J1–J14 在 0.1.0 的判定
 
