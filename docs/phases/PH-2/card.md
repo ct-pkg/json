@@ -4,7 +4,7 @@
 - phase 目录：`docs/phases/PH-2/`
 - version-minor：2
 - 规范版本：1.15.0
-- 状态：in-progress
+- 状态：closed
 - criteria-sha256：8a4914c17c48559cabf954606acb150ce53c9978c50d470328a00063ce9caecf
 - tasks-sha256：728cd38ec610a88af939560ef34af485b099f2f830a7bb3bb0ea918286babaf6
 
@@ -100,3 +100,11 @@
 | 4 | 打 annotated tag `v0.2.0` 并推送（V-7） | `git cat-file -t v0.2.0` |
 | 5 | 写收口回顾（`lessons` 带 `landing`） | `reviews/closeout-PH-2.md` |
 | 6 | 更新 `docs/session-map.md` 与本目录清单 | 同上 |
+
+## 10. 收口记录（2026-11-17）
+
+- 退出判据 E-P2-1…E-P2-5 逐条通过，原始输出见 [reviews/closeout-PH-2.md](../../../reviews/closeout-PH-2.md)。
+- 版本四项：`ct.pkg#version = 0.2.0`，MINOR=2=PH-2，PATCH=0（本 phase 无 fix）；JSON-8 的 PATCH 在开卡前的 0.1.2。
+- Issue 去向：JSON-9 → PH-5；JSON-10 → PH-4；JSON-11 → PH-5；JSON-8 已在 0.1.2 收口；JSON-12 本 phase 小循环修复（0.1.3）。
+- tag：`v0.2.0`（annotated），随收口提交创建并推送（6.7 V-7）。
+- 未覆盖：g4/g5 归 PH-6；不宣称全门禁绿。

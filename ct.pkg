@@ -6,7 +6,7 @@
 name = json
 publisher = ct
 ns-root = src
-version = 0.1.3
+version = 0.2.0
 licence = MIT
 namespace = json
 requires = ct >= 0.53.0
