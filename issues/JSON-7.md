@@ -1,12 +1,12 @@
 ---
 id: JSON-7
-status: open
+status: fixed
 priority: P1
 owner: 本包（门禁负例夹具）
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `dce8ee9`；`bash tools/check.sh g7` rc=1，命中 `tools/negatives/run.sh:97` 的假密钥字面量
+evidence: 基线 `dce8ee9`；`bash tools/check.sh g7` rc=1，命中 `tools/negatives/run.sh:97` 的假密钥字面量；修复提交 `171985d`
 ---
 
 # JSON-7 g7 密钥扫描把负例夹具自身当命中
@@ -26,7 +26,7 @@ evidence: 基线 `dce8ee9`；`bash tools/check.sh g7` rc=1，命中 `tools/negat
 ```console
 $ git archive dce8ee9 | tar -x -C /tmp/json7-baseline
 $ cd /tmp/json7-baseline && bash tools/check.sh g7
-./tools/negatives/run.sh:97:    printf 'token AKIAABCDEFGHIJKLMNOP\n' > "$d/leak.txt"
+./tools/negatives/run.sh:97:    printf 'token AKIA<16 位大写>' > "$d/leak.txt"   # 原文按密钥形态脱敏
 FAIL g7: secret scan hit
 $ echo $?
 1
@@ -38,7 +38,7 @@ $ echo $?
 
 ## 处置（fixed 时写）
 
-2026-11-17：负例脚本改为运行时拼装凭据（`printf 'token AKIA%s\n' 'ABCDEFGHIJKLMNOP'`），
+2026-11-17（修复提交 `171985d`）：负例脚本改为运行时拼装凭据（`printf 'token AKIA%s\n' 'ABCDEFGHIJKLMNOP'`），
 仓库里不再出现完整密钥字面量；g7 本体不放宽、不排除 `tools/`。
 
 ```console

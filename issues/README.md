@@ -5,7 +5,7 @@
 ## 编号与文件
 
 - 编号 `JSON-<n>`，连续递增，不复用；一条一个文件：`issues/JSON-<n>.md`。
-- 既有条目：`JSON-1`（三级下标链）、`JSON-2`（临时值接收者）、`JSON-3`（`char *`→`Str` 诊断分级）、`JSON-4`（包无法被消费，已 `fixed`）。
+- 既有条目：`JSON-1`（三级下标链，v0.62.0 已 `fixed`）、`JSON-2`（临时值接收者，v0.62.0 已 `fixed`）、`JSON-3`（`char *`→`Str` 诊断分级，`open`）、`JSON-4`（包无法被消费，`fixed`）、`JSON-5`（链式结果作实参/条件）、`JSON-6`（三级写链）、`JSON-7`（g7 负例夹具自命中，`fixed`）。
 - 本文件只管模板与状态词，不复制条目正文。
 
 ## 条目格式
@@ -44,7 +44,7 @@ $ echo $?
 ## 关联
 ```
 
-既有 4 条是旧版「`- status:` 列表」写法；G6 接入时统一补 front-matter，只补字段，不改状态与证据内容。
+7 条均已改为 front-matter；`JSON-1`/`JSON-2` 在 PH-1 由旧「`- status:` 列表」升级为 front-matter，状态与证据内容按 v0.62.0 复跑更新。
 
 ## 状态词与分权（5.4）
 
@@ -59,7 +59,7 @@ $ echo $?
 | `wontfix` | USER | 永不修 | 理由 |
 | `superseded` | REQ | 被新条目取代 | 新条目 id |
 
-`status` 必须属于上表；`fixed` 只能出现在正文处置段，不得写入 `status` 字段（本仓既有 `JSON-4` 的 `- status: **fixed**` 属旧写法，G6 接入时按本条校正为 front-matter 的 `fixed` + 处置段）。
+`status` 必须属于上表。**本仓取 front-matter 的 `status: fixed` + 正文处置段**：5.4 判据里「`fixed` 不得写入 `status`」与状态词表本身冲突，`G6` 实现与 PH-1 的 `E-P1-4` 都按状态词表执行；该冲突已在 PH-1 收口报告登记为规范缺陷提案，不在此处改规范。
 
 ## 关闭与去向
 
