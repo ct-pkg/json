@@ -1,0 +1,81 @@
+/*
+ * PH-5 acceptance driver: encoding failures and the error contract.
+ *
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build test/j5_errors.ct -I src -o /tmp/j5 && /tmp/j5
+ *
+ * Exit 0 only when every check passes.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import json;
+
+struct Stats {
+    int total;
+    int failed;
+}
+
+static void check(struct Stats *st, int cond, char *name)
+{
+    st->total = st->total + 1;
+    if (cond) {
+        printf("ok %d %s\n", st->total, name);
+    } else {
+        st->failed = st->failed + 1;
+        printf("not ok %d %s\n", st->total, name);
+    }
+}
+
+static JsonRef empty_ref(void)
+{
+    JsonRef r;
+    r.p = 0;
+    return r;
+}
+
+/* Encode one program-written double and report the outcome. */
+static void encode_double(struct Stats *st, char *name, double d, int want_ok)
+{
+    JsonRef root = empty_ref();
+    Str k = str_from("x");
+    char *out;
+    int ok;
+
+    check(st, json_decode("{}", 2, &root) == JSON_OK, "double fixture decodes");
+    root.set_double(k, d);
+    out = json_encode(root);
+    ok = out != 0;
+    check(st, ok == want_ok, name);
+    if (!want_ok) {
+        check(st, json_last_error() == JSON_ERR_RANGE, "a rejected real answers RANGE");
+    }
+    free(out);
+    json_free(root);
+    k.release();
+}
+
+static void nan_contract(struct Stats *st)
+{
+    encode_double(st, "nan encode rejected", strtod("nan", 0), 0);
+    encode_double(st, "inf encode rejected", strtod("inf", 0), 0);
+    encode_double(st, "-inf encode rejected", strtod("-inf", 0), 0);
+    encode_double(st, "a finite double still encodes", 2.5, 1);
+}
+
+int main(void)
+{
+    struct Stats st;
+    st.total = 0;
+    st.failed = 0;
+
+    nan_contract(&st);
+
+    if (st.failed == 0) {
+        printf("all checks passed\n");
+        return 0;
+    }
+    printf("%d of %d checks failed\n", st.failed, st.total);
+    return 1;
+}
