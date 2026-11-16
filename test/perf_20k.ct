@@ -1,0 +1,50 @@
+/*
+ * R-A-11 fixture: decode a 20k-element array and read every element through
+ * `get_idx`; the whole decode + traversal must stay under 10 ms (D-005).
+ *
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build test/perf_20k.ct -I src -o /tmp/perf20k && /tmp/perf20k
+ *
+ * Exit 0 only when the sum is correct and the elapsed time is < 10 ms.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+import json;
+
+int main(void)
+{
+    int n = 20000;
+    int i;
+    int p = 0;
+    long long v = 0;
+    long long sum = 0;
+    double ms;
+    char *text = malloc((size_t)n * 2 + 3);
+    JsonRef r = { .p = 0 };
+    clock_t t0;
+    clock_t t1;
+
+    if (text == 0) return 1;
+    text[p] = '['; p = p + 1;
+    for (i = 0; i < n; i = i + 1) {
+        if (i > 0) { text[p] = ','; p = p + 1; }
+        text[p] = '1'; p = p + 1;
+    }
+    text[p] = ']'; p = p + 1;
+    text[p] = 0;
+
+    t0 = clock();
+    if (json_decode(text, p, &r) != JSON_OK) return 1;
+    for (i = 0; i < n; i = i + 1) {
+        if (json_as_int(r.get_idx(i), &v) == JSON_OK) sum = sum + v;
+    }
+    t1 = clock();
+    ms = 1000.0 * (double)(t1 - t0) / CLOCKS_PER_SEC;
+    printf("perf20k: sum=%lld elapsed=%.3fms\n", sum, ms);
+    json_free(r);
+    free(text);
+    return (sum == n && ms < 10.0) ? 0 : 1;
+}
