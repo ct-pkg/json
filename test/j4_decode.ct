@@ -1,0 +1,203 @@
+/*
+ * PH-4 decode-boundary driver: strict UTF-8, BOM, and explicit byte cases.
+ *
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build test/j4_decode.ct -I src -o /tmp/j4 && /tmp/j4
+ *
+ * Exit 0 only when every check passes.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import json;
+
+struct Stats {
+    int total;
+    int failed;
+}
+
+static void check(struct Stats *st, int cond, char *name)
+{
+    st->total = st->total + 1;
+    if (cond) {
+        printf("ok %d %s\n", st->total, name);
+    } else {
+        st->failed = st->failed + 1;
+        printf("not ok %d %s\n", st->total, name);
+    }
+}
+
+static JsonRef empty_ref(void)
+{
+    JsonRef r;
+    r.p = 0;
+    return r;
+}
+
+static int decode_doc(int strict, char *buf, int n, JsonRef *out)
+{
+    if (strict) return json_decode_strict(buf, n, out);
+    return json_decode(buf, n, out);
+}
+
+/* Build {"s":"<bytes>"} around a byte sequence. Returns the length. */
+static int quoted_value(char *doc, char *bytes, int n)
+{
+    int p = 0;
+    int i;
+    doc[p] = '{'; p = p + 1;
+    doc[p] = '"'; p = p + 1;
+    doc[p] = 's'; p = p + 1;
+    doc[p] = '"'; p = p + 1;
+    doc[p] = ':'; p = p + 1;
+    doc[p] = '"'; p = p + 1;
+    for (i = 0; i < n; i = i + 1) {
+        doc[p] = bytes[i]; p = p + 1;
+    }
+    doc[p] = '"'; p = p + 1;
+    doc[p] = '}'; p = p + 1;
+    return p;
+}
+
+static void utf8_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    char doc[64];
+    char bytes[8];
+    char *sp;
+    Str key;
+    int n;
+    int slen = -1;
+    int rc;
+
+    /* Raw é (C3 A9) is valid in both modes. */
+    bytes[0] = (char)0xC3;
+    bytes[1] = (char)0xA9;
+    n = quoted_value(doc, bytes, 2);
+    rc = decode_doc(0, doc, n, &root);
+    check(st, rc == JSON_OK, "raw UTF-8 decodes leniently");
+    key = str_from("s");
+    sp = json_as_str(json_member(root, key), &slen);
+    key.release();
+    check(st, sp != 0 && slen == 2, "raw UTF-8 keeps two bytes");
+    json_free(root); root = empty_ref();
+    rc = decode_doc(1, doc, n, &root);
+    check(st, rc == JSON_OK, "raw UTF-8 decodes strictly");
+    json_free(root); root = empty_ref();
+
+    /* 0xFF is passed through leniently and rejected strictly. */
+    bytes[0] = (char)0xFF;
+    n = quoted_value(doc, bytes, 1);
+    rc = decode_doc(0, doc, n, &root);
+    check(st, rc == JSON_OK, "0xFF is accepted leniently");
+    json_free(root); root = empty_ref();
+    rc = decode_doc(1, doc, n, &root);
+    check(st, rc == JSON_ERR_UTF8 && root.p == 0, "0xFF is UTF8 under strict");
+
+    /* Overlong C0 AF. */
+    bytes[0] = (char)0xC0;
+    bytes[1] = (char)0xAF;
+    n = quoted_value(doc, bytes, 2);
+    json_free(root); root = empty_ref();
+    rc = decode_doc(1, doc, n, &root);
+    check(st, rc == JSON_ERR_UTF8, "an overlong two-byte sequence is UTF8");
+    json_free(root); root = empty_ref();
+
+    /* Overlong F0 80 80 80. */
+    bytes[0] = (char)0xF0; bytes[1] = (char)0x80; bytes[2] = (char)0x80; bytes[3] = (char)0x80;
+    n = quoted_value(doc, bytes, 4);
+    rc = decode_doc(1, doc, n, &root);
+    check(st, rc == JSON_ERR_UTF8, "an overlong four-byte sequence is UTF8");
+    json_free(root); root = empty_ref();
+
+    /* UTF-8 encoded surrogate ED A0 80. */
+    bytes[0] = (char)0xED; bytes[1] = (char)0xA0; bytes[2] = (char)0x80;
+    n = quoted_value(doc, bytes, 3);
+    rc = decode_doc(1, doc, n, &root);
+    check(st, rc == JSON_ERR_UTF8, "a UTF-8 encoded surrogate is UTF8");
+    json_free(root); root = empty_ref();
+
+    /* Lone continuation byte. */
+    bytes[0] = (char)0x80;
+    n = quoted_value(doc, bytes, 1);
+    rc = decode_doc(1, doc, n, &root);
+    check(st, rc == JSON_ERR_UTF8, "a lone continuation byte is UTF8");
+    json_free(root); root = empty_ref();
+
+    /* Valid four-byte 😀 (F0 9F 98 80). */
+    bytes[0] = (char)0xF0; bytes[1] = (char)0x9F; bytes[2] = (char)0x98; bytes[3] = (char)0x80;
+    n = quoted_value(doc, bytes, 4);
+    rc = decode_doc(1, doc, n, &root);
+    check(st, rc == JSON_OK, "a valid four-byte sequence decodes strictly");
+    json_free(root); root = empty_ref();
+
+    /* Escaped surrogate pair is valid in strict mode too. */
+    rc = decode_doc(1, "{\"s\":\"\\ud83d\\ude00\"}", (int)strlen("{\"s\":\"\\ud83d\\ude00\"}"), &root);
+    check(st, rc == JSON_OK, "an escaped surrogate pair decodes strictly");
+    json_free(root); root = empty_ref();
+}
+
+static void bom_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    char bom[5];
+    int rc;
+
+    bom[0] = (char)0xEF; bom[1] = (char)0xBB; bom[2] = (char)0xBF;
+    bom[3] = '{'; bom[4] = '}';
+
+    rc = json_decode(bom, 5, &root);
+    check(st, rc == JSON_ERR_SYNTAX && root.p == 0, "a BOM is rejected leniently");
+    root = empty_ref();
+    rc = json_decode_strict(bom, 5, &root);
+    check(st, rc == JSON_ERR_SYNTAX && root.p == 0, "a BOM is rejected strictly");
+    json_free(root); root = empty_ref();
+
+    rc = json_decode(" \n\t{}", (int)strlen(" \n\t{}"), &root);
+    check(st, rc == JSON_OK, "surrounding whitespace is still allowed");
+    json_free(root);
+}
+
+static void parity_contract(struct Stats *st)
+{
+    JsonRef lenient = empty_ref();
+    JsonRef strict = empty_ref();
+    char *doc = "{\"a\":\"é\",\"b\":[1,true,null]}";
+    char *le;
+    char *se;
+    int rl;
+    int rs;
+
+    rl = json_decode(doc, (int)strlen(doc), &lenient);
+    rs = json_decode_strict(doc, (int)strlen(doc), &strict);
+    check(st, rl == JSON_OK && rs == JSON_OK, "a valid document decodes in both modes");
+    if (rl == JSON_OK && rs == JSON_OK) {
+        le = json_encode(lenient);
+        se = json_encode(strict);
+        check(st, le != 0 && se != 0 && strcmp(le, se) == 0,
+              "both modes keep the same root bytes");
+        free(le);
+        free(se);
+    }
+    json_free(lenient);
+    json_free(strict);
+}
+
+int main(void)
+{
+    struct Stats st;
+    st.total = 0;
+    st.failed = 0;
+
+    utf8_contract(&st);
+    bom_contract(&st);
+    parity_contract(&st);
+
+    if (st.failed == 0) {
+        printf("all checks passed\n");
+        return 0;
+    }
+    printf("%d of %d checks failed\n", st.failed, st.total);
+    return 1;
+}
