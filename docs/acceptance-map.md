@@ -20,7 +20,7 @@
 | R-A-08 | UTF-8 校验是可判定开关 | 需新增 | ACC-08 | `grep -q 'json_decode_strict' src/json.h.ct`（计划）+ `probe: 0xFF → JSON_ERR_UTF8` | 当前无 strict 入口；默认宽松是现状 | PH-4 |
 | R-A-09 | 实数精度可核对；1e999 等边界有明确期望 | 需变更 | ACC-09 | `probe: as_double("1e999")` 期望 `JSON_ERR_RANGE` | 0.30000000000000004 精确；1e999 当前返回 inf rc=0（JSON-10） | PH-4（JSON-10） |
 | R-A-10 | 深度是硬上限，调用方不能打穿 C 栈 | 已满足 | ACC-10 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/depth_1m.ct -I src -o /tmp/depth1m && /tmp/depth1m` | 10^6 层返回 -9、root 空；固定 64 无调高入口（D-005） | PH-4（复核） |
-| R-A-11 | 大数组/大对象重复查找不退化为 O(n²) | 已满足 | ACC-11 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/perf_20k.ct -I src -o /tmp/perf20k && /tmp/perf20k` | 本机多次实测 1.7–2.4 ms（< 10 ms）；数组 O(1) 下标、对象 Map 索引（D-005） | PH-4（复核） |
+| R-A-11 | 大数组/大对象重复查找不退化为 O(n²) | 已满足 | ACC-11 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/perf_20k.ct -I src -o /tmp/perf20k && /tmp/perf20k` | 本机多次实测 0.9–2.4 ms（< 10 ms）；数组 O(1) 下标、对象 Map 索引（D-005） | PH-4（复核） |
 | R-A-12 | 流首 BOM 与空白行为唯一 | 已满足 | ACC-12 | `probe: json_decode(BOM+"{}")` 期望 -2 | BOM 一律按非法字符拒绝，不自动剥离（D-002）；用例待 PH-4 补 | PH-4（补用例） |
 | R-B-01 | 追写器结构错误立即拒绝 | 不做 | ACC-13 | `grep -q 'JsonOut' src/json.h.ct` 期望 1（不存在） | 旧 `JsonOut` 不在包公开面，树编码由 `json_encode` 承担（D-006） | PH-6（文档明确） |
 | R-B-02 | 字符串转义 `"`、`\`、控制字节；非 ASCII 原样 | 已满足 | ACC-14 | `test/j1_roundtrip.ct` 的 `round trip: escapes`、`a NUL value round-trips` 与 `a 0x1F value round-trips` | `j1_enc_bytes`；JSON-12 修复后控制字节写 4 位（`5359fb4`） | 本 phase |

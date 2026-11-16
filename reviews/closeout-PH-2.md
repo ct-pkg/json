@@ -165,8 +165,16 @@ P1-1/P1-2/P2-2/P2-3/P2-4 通过；剩余：映射的 depth/perf 命令缺 `CT_ST
 §5 PH-4 漏列 R-A-10/11、status/版本/收口状态在收口前自相矛盾、roadmap 归属未对齐。
 已在 `f2efc2b` 修正（含 0x1F 断言）；版本与收口状态由本收口提交 + `v0.2.0` tag 一次性解决。
 
-### 9.3 终验
+### 9.3 终验（基线 `875b0d8`，tag `v0.2.0`）
 
-收口提交与 tag 创建后，VERIFY 在 `v0.2.0` 上复跑 g8 与 E-P2 项，签字如下。
+```text
+VERIFY: 通过 | 复核人: verify-ph2 | 日期: 2026-11-17 | 基线: 875b0d8
+```
 
-（终验签字待填）
+- `bash tools/check.sh g8` rc=0；tag `v0.2.0` 指向 `875b0d8`，已推送，`origin/main` 含该提交。
+- 版本/收口四者一致：`ct.pkg` 0.2.0、`status.md` 0.2.0 已收口、卡片 closed、tag v0.2.0。
+- 映射 R-A-10/R-A-11 的命令照抄可跑（`depth1m` rc=0、`perf20k` rc=0，本次 0.942 ms）。
+- g2 rc=0；`tools/negatives/run.sh g2 g8` 四条负例均 red，脚本 rc=0。
+
+非阻塞项：roadmap 的 PH-1/PH-2 状态行已在本提交更新；本章 §9 与
+`docs/evidence/release-PH-2.md` 同提交入库。
