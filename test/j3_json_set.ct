@@ -1,0 +1,183 @@
+/*
+ * PH-3 acceptance driver: json_set path writes.
+ *
+ *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
+ *     ct build test/j3_json_set.ct -I src -o /tmp/j3 && /tmp/j3
+ *
+ * Exit 0 only when every check passes. Positive checks print "ok"; failures
+ * print "not ok" and the last line is the failure count.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+import json;
+
+struct Stats {
+    int total;
+    int failed;
+}
+
+static void check(struct Stats *st, int cond, char *name)
+{
+    st->total = st->total + 1;
+    if (cond) {
+        printf("ok %d %s\n", st->total, name);
+    } else {
+        st->failed = st->failed + 1;
+        printf("not ok %d %s\n", st->total, name);
+    }
+}
+
+static JsonRef empty_ref(void)
+{
+    JsonRef r;
+    r.p = 0;
+    return r;
+}
+
+static JsonRef member_cstr(JsonRef v, char *k)
+{
+    Str s = str_from(k);
+    JsonRef r = json_member(v, s);
+    s.release();
+    return r;
+}
+
+/* Decode a standalone JSON value ("7", "\"s\"", "{}", ...). */
+static JsonRef value_of(struct Stats *st, char *text, char *name)
+{
+    JsonRef v = empty_ref();
+    int rc = json_decode(text, (int)strlen(text), &v);
+    check(st, rc == JSON_OK, name);
+    return v;
+}
+
+static int set_path(JsonRef root, char *path, JsonRef value)
+{
+    Str s = str_from(path);
+    int rc;
+    if (s.len < 0) return JSON_ERR_MEMORY;
+    rc = json_set(root, s, value);
+    s.release();
+    return rc;
+}
+
+static void path_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef seven = value_of(st, "7", "seven decodes");
+    JsonRef nine = value_of(st, "9", "nine decodes");
+    JsonRef a;
+    JsonRef b;
+    long long n = 0;
+
+    check(st, json_decode("{}", 2, &root) == JSON_OK, "path fixture decodes");
+
+    check(st, set_path(root, "a.b.c", seven) == JSON_OK, "create a nested path");
+    a = member_cstr(root, "a");
+    b = member_cstr(a, "b");
+    check(st, json_as_int(member_cstr(b, "c"), &n) == JSON_OK && n == 7,
+          "the created leaf is readable");
+    check(st, json_tag(a) == JSON_TAG_OBJ && json_tag(b) == JSON_TAG_OBJ,
+          "intermediate objects were created");
+
+    check(st, set_path(root, "a.b.c", nine) == JSON_OK, "overwrite an existing leaf");
+    check(st, json_as_int(member_cstr(member_cstr(a, "b"), "c"), &n) == JSON_OK && n == 9,
+          "the overwrite is visible");
+    check(st, json_obj_len(member_cstr(a, "b")) == 1, "overwrite keeps the object size");
+
+    check(st, set_path(root, "a.b.d", seven) == JSON_OK, "add a sibling");
+    check(st, json_obj_len(member_cstr(a, "b")) == 2, "the sibling is appended");
+
+    json_free(seven);
+    json_free(nine);
+    json_free(root);
+}
+
+static void failure_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef scalar = empty_ref();
+    JsonRef seven = value_of(st, "7", "failure seven decodes");
+    JsonRef empty = empty_ref();
+    long long n = 0;
+
+    check(st, json_decode("{\"a\":{\"b\":1}}", 13, &root) == JSON_OK,
+          "failure fixture decodes");
+    check(st, set_path(root, "a.b.c", seven) == JSON_ERR_TYPE,
+          "writing through a scalar answers TYPE");
+    scalar = member_cstr(member_cstr(root, "a"), "b");
+    check(st, json_as_int(scalar, &n) == JSON_OK && n == 1,
+          "a type conflict leaves the scalar intact");
+    check(st, json_obj_len(member_cstr(root, "a")) == 1,
+          "a type conflict creates no siblings");
+    check(st, set_path(root, "new.leaf", seven) == JSON_OK, "a valid path still works");
+
+    check(st, set_path(root, "", seven) == JSON_ERR_RANGE, "empty path is a range error");
+    check(st, set_path(root, ".a", seven) == JSON_ERR_RANGE, "leading dot is a range error");
+    check(st, set_path(root, "a..b", seven) == JSON_ERR_RANGE, "double dot is a range error");
+    check(st, set_path(root, "a.", seven) == JSON_ERR_RANGE, "trailing dot is a range error");
+    check(st, set_path(root, "a", empty) == JSON_ERR_TYPE, "an empty value is a type error");
+    check(st, json_obj_len(member_cstr(root, "a")) == 1,
+          "rejected writes leave the object size unchanged");
+
+    check(st, json_decode("[]", 2, &root) == JSON_OK, "array root decodes");
+    check(st, set_path(root, "a.b", seven) == JSON_ERR_TYPE,
+          "a non-object root answers TYPE");
+
+    json_free(seven);
+    json_free(root);
+}
+
+static void ownership_contract(struct Stats *st)
+{
+    JsonRef root = empty_ref();
+    JsonRef shared = empty_ref();
+    JsonRef nine;
+    JsonRef kept;
+    char *key0;
+    int klen = -1;
+    long long n = 0;
+
+    check(st, json_decode("{}", 2, &root) == JSON_OK, "ownership fixture decodes");
+    check(st, json_decode("{\"v\":5}", 7, &shared) == JSON_OK, "shared value decodes");
+
+    check(st, set_path(root, "slot", shared) == JSON_OK, "store a shared value");
+    json_free(shared);   /* json_set retained its own reference */
+    kept = member_cstr(root, "slot");
+    check(st, json_tag(kept) == JSON_TAG_OBJ, "the stored value outlives the caller handle");
+    check(st, json_as_int(member_cstr(kept, "v"), &n) == JSON_OK && n == 5,
+          "the stored value keeps its payload");
+
+    json_free(root);
+    check(st, json_decode("{\"x\":1,\"y\":2}", 13, &root) == JSON_OK,
+          "position fixture decodes");
+    nine = value_of(st, "9", "position nine decodes");
+    check(st, set_path(root, "x", nine) == JSON_OK, "overwrite the first key");
+    key0 = json_obj_key_at(root, 0, &klen);
+    check(st, key0 != 0 && klen == 1 && key0[0] == 'x',
+          "overwrite keeps the first key position");
+    check(st, json_obj_len(root) == 2, "overwrite keeps the object size");
+
+    json_free(nine);
+    json_free(root);
+}
+
+int main(void)
+{
+    struct Stats st;
+    st.total = 0;
+    st.failed = 0;
+
+    path_contract(&st);
+    failure_contract(&st);
+    ownership_contract(&st);
+
+    if (st.failed == 0) {
+        printf("all checks passed\n");
+        return 0;
+    }
+    printf("%d of %d checks failed\n", st.failed, st.total);
+    return 1;
+}
