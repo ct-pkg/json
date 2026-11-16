@@ -941,7 +941,7 @@ static void j1_enc_bytes(struct J1Buf *b, char *s, int n)
         } else if (c == 9) {
             j1_puts(b, "\\t");
         } else if (c < 0x20) {
-            j1_puts(b, "\\u00");
+            j1_puts(b, "\\u");
             j1_put_hex4(b, c);
         } else {
             j1_putc(b, c);
