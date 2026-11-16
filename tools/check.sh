@@ -325,11 +325,38 @@ g8)
             new="$(git -C "$pkg" show "$c:ct.pkg" 2>/dev/null | sed -n 's/^version *= *\([0-9][0-9.]*\).*$/\1/p' | head -n 1)"
             [ -n "$old" ] && [ -n "$new" ] || { printf 'commit %s changed ct.pkg but version unreadable\n' "$c" >&2; bad=1; continue; }
             [ "$old" = "$new" ] && { printf 'commit %s touches ct.pkg without a version move (V-5)\n' "$c" >&2; bad=1; continue; }
-            if git -C "$pkg" log -1 --format=%s "$c" | grep -q '^docs\?'; then
-                printf 'commit %s is a docs commit but moves the version (V-4)\n' "$c" >&2; bad=1
+            o_major="${old%%.*}"; o_rest="${old#*.}"; o_minor="${o_rest%%.*}"; o_patch="${o_rest#*.}"
+            n_major="${new%%.*}"; n_rest="${new#*.}"; n_minor="${n_rest%%.*}"; n_patch="${n_rest#*.}"
+            subj="$(git -C "$pkg" log -1 --format=%s "$c")"
+            body="$(git -C "$pkg" show --format=%B -s "$c")"
+            if [ "$n_major" -ne "$o_major" ]; then
+                printf 'commit %s moves MAJOR; only the user may do that (V-1)\n' "$c" >&2; bad=1; continue
             fi
-            if ! git -C "$pkg" show --format=%B -s "$c" | grep -qE 'issues/JSON-[0-9]+\.md'; then
-                printf 'commit %s moves version without an issue reference (V-3)\n' "$c" >&2; bad=1
+            if [ "$n_minor" -gt "$o_minor" ]; then
+                # V-1 / V-5: phase closeout. MINOR +1 exactly, PATCH resets to 0,
+                # the PH-<n> card is closed in this commit and named in the body.
+                if [ "$n_minor" -ne "$((o_minor + 1))" ] || [ "$n_patch" -ne 0 ]; then
+                    printf 'commit %s phase version must be MINOR+1 and PATCH 0 (V-1)\n' "$c" >&2; bad=1; continue
+                fi
+                card="docs/phases/PH-$n_minor/card.md"
+                if ! git -C "$pkg" show "$c:$card" 2>/dev/null | grep -qxF -- '- 状态：closed'; then
+                    printf 'commit %s moves MINOR without closing %s (V-1)\n' "$c" "$card" >&2; bad=1; continue
+                fi
+                if ! printf '%s\n' "$body" | grep -q "PH-$n_minor"; then
+                    printf 'commit %s moves MINOR without naming PH-%s (V-1)\n' "$c" "$n_minor" >&2; bad=1
+                fi
+            else
+                # V-3 / V-4: a fix. PATCH +1 exactly, one issue, not a docs-only commit.
+                if [ "$n_minor" -ne "$o_minor" ] || [ "$n_patch" -ne "$((o_patch + 1))" ]; then
+                    printf 'commit %s fix version must be PATCH+1 only (V-3)\n' "$c" >&2; bad=1; continue
+                fi
+                if printf '%s' "$subj" | grep -q '^docs\?'; then
+                    printf 'commit %s is a docs commit but moves the version (V-4)\n' "$c" >&2; bad=1
+                fi
+                refs="$(printf '%s\n' "$body" | grep -oE 'issues/JSON-[0-9]+\.md' | sort -u | wc -l | tr -d ' ')"
+                if [ "$refs" -ne 1 ]; then
+                    printf 'commit %s fix must reference exactly one issue, got %s (V-3)\n' "$c" "$refs" >&2; bad=1
+                fi
             fi
         fi
     done

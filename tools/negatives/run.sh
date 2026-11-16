@@ -109,6 +109,15 @@ case " $want " in
     git -C "$d" -c user.name=neg -c user.email=neg@example.invalid \
         commit -qam 'chore: bump version without issue'
     expect_red "g8 version move without issue" g8 "$d"
+
+    # A MINOR move is a phase closeout, not a fix: without the closed card it
+    # must still fail even when the body names the phase.
+    d="$tmp/g8-minor"
+    git clone -q "$pkg" "$d"
+    sed -i '' 's/^version = 0\.1\.1$/version = 0.2.0/' "$d/ct.pkg"
+    git -C "$d" -c user.name=neg -c user.email=neg@example.invalid \
+        commit -qam 'chore(release): PH-2 收口（v0.2.0）'
+    expect_red "g8 minor without closed card" g8 "$d"
     ;;
 esac
 
