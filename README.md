@@ -17,6 +17,12 @@
 > imports; no new features). Everything below about the zero-allocation view describes
 > the superseded 0.1.0 file; this README documents what exists, not the decided target.
 
+Chained reads work on CT **v0.62.0**: `doc["a"]["b"]["c"]`, `doc["server"].has(k)` and
+`doc.get("a").get("b")` all compile in declaration and assignment position. A chained
+result still cannot be used as a call argument or take a field, and a multi-level write
+chain (`doc["a"]["b"]["c"] = v`) is still rejected; keep a local variable for those.
+Numeric index remains `get_idx(i)` (`v[0]` is not array access).
+
 ## As a package (0.1.1)
 
 ct-json is an external package, not a CT built-in. Build path is the L2 `ct` tool
@@ -120,7 +126,7 @@ Strings are escaped, including control bytes as `\u00XX`; `real` prints with
 `%.17g`. `emit` copies one view's bytes into a `JsonOut` so a parsed subtree can
 be embedded or round-tripped.
 
-## Limits (current 0.1.0 view implementation; superseded — see Status)
+## Limits (superseded 0.1.0 view implementation — see Status)
 
 - **Zero allocation.** No `malloc`, no hidden ownership; nesting depth and output
   size are the only resource limits (64 containers by default; set
@@ -162,6 +168,11 @@ arithmetic, or pretty printing.
 > 元素。树模型与写入面已实现于 [`src/json.h.ct`](src/json.h.ct)（0.1.1 为可用性补丁：
 > 包可安装、可 import，不加新特性）。下文的零分配只读视图是 0.1.0 旧文件，已被取代；
 > 本文只描述「已有」，不描述「已决定」。
+>
+> 链式读在 CT **v0.62.0** 起可用：`doc["a"]["b"]["c"]`、`doc["server"].has(k)`、
+> `doc.get("a").get("b")` 在声明初始化与赋值位置都能编译。链式结果仍不能作函数实参或
+> 取字段，三级写链 `doc["a"]["b"]["c"] = v` 仍被拒绝；这两种情况先落局部变量。
+> 数字下标仍用 `get_idx(i)`（`v[0]` 不是数组访问）。
 
 一个 CT 文件：校验 JSON、在调用方文本上暴露只读视图、再把值序列化回去。全程
 不分配内存、不持有所有权、不建 DOM。解析后的“文档”就是原始字节加上第一个错误的
@@ -245,7 +256,7 @@ if (out.finish() < 0) { /* out.error() */ }
 `real` 用 `%.17g` 输出。`emit` 把一个视图的字节复制进 `JsonOut`，因此解析出的
 子树可以被嵌入或原样往返。
 
-### 边界与限制（0.1.0 视图实现；已废止，见上方状态）
+### 边界与限制（已废止的 0.1.0 视图实现，见上方状态）
 
 - **零分配。** 没有 `malloc`，没有隐藏所有权；唯一的资源限制是嵌套深度（默认
   64 层容器，可在 `parse` 前改 `doc.depth_limit`）和输出长度。

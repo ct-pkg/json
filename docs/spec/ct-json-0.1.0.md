@@ -11,7 +11,7 @@
 由此定两条口径：
 
 1. **演进方向不是扩张本包自有句柄层。** `JsonRef` / `JsonNode` 是 0.1.0 的过渡实现：为了在 CT 当前的 `Vec` / `Map` 能力边界内把读写做对（保序、共享子对象、引用计数、数字双轨）。凡是看起来像「JSON 库需要 X」的诉求，先翻译成「`Vec` / `Map` 需要什么语法能力」；能落在容器既有能力上的，不记成 JSON 库的需求（逐条重述见 `docs/review/ct-json-0.1.0-js-style-eval.md` §五）。
-2. **0.1.1 只修可用性与正确性，不加接口层能力。** 本版验收口径：`ct get` + `ct install` 装完后消费方能 `import json::src::json`、9 个样例可编可跑、门禁绿；共享库机制尚未落地，本轮以既有 `vendor/<包>` 方式为准。需要新语言能力（同名重载、属性访问协议、三级链、容器迭代、字面量→`Str`）的条目一律标「等 CT」留在 backlog，不实现。
+2. **0.1.1 只修可用性与正确性，不加接口层能力。** 本版验收口径：`ct get` + `ct install` 装完后消费方能 `import json::src::json`、9 个样例可编可跑、门禁绿；共享库机制尚未落地，本轮以既有 `vendor/<包>` 方式为准。需要新语言能力（同名重载、属性访问协议、容器迭代、字面量→`Str`）的条目一律标「等 CT」留在 backlog，不实现。
 
 消费方式（0.1.1 实测）：
 
@@ -27,7 +27,7 @@ consumers/  ct get ../../            # → vendor/json/ + ct.lock（消费方自
 
 ct-json 做两件事：把 JSON 文本解码为可读写的树；把树编码回 JSON 文本。
 
-长期目标是与 JavaScript 相同的访问方式（`data.server.port`、`data["server"]`、`items[0].name`）。v0.53.0 已支持**单层字符串键下标**，因此本版把 `v["server"]` 作为正式访问入口；数字下标与方法结果链式仍不可用，边界见 §五。
+长期目标是与 JavaScript 相同的访问方式（`data.server.port`、`data["server"]`、`items[0].name`）。v0.53.0 已支持**单层字符串键下标**，因此本版把 `v["server"]` 作为正式访问入口；v0.62.0 起三级读链、下标结果作接收者与方法结果链也可用，数字下标仍不可用，边界见 §五。
 
 不做：流式解析、JSON Schema 校验、路径查询 API、把 JSON 语义内建进 CT 语言层。
 
@@ -221,20 +221,20 @@ pub void json_free(JsonRef v);   // 等价于 json_release 一次
 | J2 | 支持 | `json_arr_len(root)`；元素用 `get_idx(i)` |
 | J3 | 支持 | `json_tag(root)` 分派；`pub enum` 可用 |
 | J4 | **不支持** | 0.1.0 只返回负错误码，不提供 `JsonError{line,col,message}`；`message` 所有权无裁定。升级路径：0.1.1 迁到错误对象（code + offset + message） |
-| J5 | 支持 | `JsonRef h = doc["server"]["host"];` 在声明初始化/赋值位置可用；两级链直接作函数参数时不可用（§5.1） |
+| J5 | 支持 | `JsonRef h = doc["server"]["host"];` 在声明初始化/赋值位置可用；链式结果直接作函数参数时仍不可用（JSON-5，§5.1） |
 | J6 | 支持（改写） | `long long port; json_as_int(doc["port"], &port);`；无自动转换 |
 | J7 | 支持 | `has` 区分缺失；`get` 不崩 |
 | J8 | **不支持** | 0.1.0 不提供 `json_str` 等构造辅助，`json_encode` 只留单入口；原断言形态不成立。升级路径：0.1.1 补构造 API（仍单入口），否则在 0.1.1 明确废弃原断言 |
 | J9 | 支持 | 只读编码；返回值由调用方 `free`，库内不释放 |
 | J10 | 支持（改写） | `json_release` 计数归零；不再用 `delete doc` 断言 |
-| J11 | **不支持** | 三级下标链即使位于声明初始化/赋值位置也报 `a method call on a temporary is only allowed at the start of a statement or of an assignment`；两级链可用，见 §5.1 |
+| J11 | 支持（v0.62.0） | 三级下标链在声明初始化、赋值与 return 位置都可用，不再报临时值接收者错误；见 §5.1 |
 | J12 | 支持 | `json_as_*` + `json_tag` 逐元素判定 |
 | J13 | 支持 | `json_as_str` 对非字符串返回 `JSON_ERR_TYPE` |
 | J14 | 支持 | `json_as_int` 对 bool 返回 0/1；越界返回 `JSON_ERR_RANGE` |
 
-不支持的三条是 J4、J8、J11，原因如上；不使用「暂不支持」这种含糊表述。
+不支持的两条是 J4、J8，原因如上；J11 在 v0.62.0 已支持。不使用「暂不支持」这种含糊表述。
 
-## 五、v0.53.0 的访问边界
+## 五、v0.62.0 的访问边界
 
 | 能力 | 现状 | 规范写法 |
 | --- | --- | --- |
@@ -243,45 +243,40 @@ pub void json_free(JsonRef v);   // 等价于 json_release 一次
 | 跨单元下标 | `get`/`set` 必须 `pub` | `pub JsonRef get(char *k);` |
 | 数字下标 `v[0]` | 编译通过，落 `get(0)`：`0` 是空 `char *` 键，**静默返回空句柄** | **0.1.0 不支持**；用 `get_idx(i)`，越界返回空句柄 |
 | 指针接收者 `p["k"]` | 不展开，落 C 语义 | 用 `JsonRef` 值句柄，不用 `JsonNode*` 做公开入口 |
-| 两级链 `v["a"]["b"]` | 可用（声明初始化/赋值位置）；三级链报临时值错误 | 见 §5.1 正例 |
-| 方法结果链 `v.get("a").get("b")` | 不支持：`method receiver must be a variable, an element, a call or a field chain` | 拆成 `JsonRef a = doc.get("a"); JsonRef b = a.get("b");` |
-| 对临时值调方法 `doc["a"].has(k)` | 不支持：`method receiver must be a variable, an element, a call or a field chain` | 先取局部变量 |
+| 两级链 `v["a"]["b"]` | 可用（声明初始化/赋值位置） | 见 §5.1 正例 |
+| 三级链 `v["a"]["b"]["c"]` | 可用（声明初始化/赋值/return） | 见 §5.1 正例 |
+| 方法结果链 `v.get("a").get("b")` | 可用（v0.62.0） | 见 §5.1 正例 |
+| 对临时值调方法 `doc["a"].has(k)` | 可用（v0.62.0） | 见 §5.1 正例 |
+| 链式结果作函数实参 / 条件 / 字段 | 不可用：`a method call on a temporary ...` 或 C 层 `cannot take the address of an rvalue` | 先落到局部变量（JSON-5） |
+| 三级写链 `v["a"]["b"]["c"] = x` | 不可用：`a custom subscript write needs a statement and an lvalue receiver` | 逐级落局部变量再写（JSON-6） |
 | 经 union 成员的方法调用 | 不支持（`unknown receiver type`） | 先取到局部变量再调用 |
 | 自动转换 | 不存在 | 显式 `json_as_int` / `json_as_str` |
 | 同名重载 | 不支持（C 层冲突） | 一个名字一个函数；编码只留单入口 |
 
-### 5.1 链式访问的实测边界（编译器限制，不是设计取舍）
+### 5.1 链式访问的实测边界（v0.62.0）
 
-**正例**——两级下标链在声明初始化与赋值位置可用：
+**正例**——三级读链、下标结果作接收者、方法结果链都可用：
 
 ```ct
 JsonRef server = doc["server"];
-JsonRef host   = doc["server"]["host"];   // 声明初始化位置
+JsonRef host   = doc["server"]["host"];   // 两级链
+JsonRef c      = doc["a"]["b"]["c"];      // 三级链：声明初始化位置
 JsonRef port_ref;
-port_ref = doc["server"]["port"];         // 赋值位置
+port_ref = doc["a"]["b"]["c"];            // 三级链：赋值位置
+JsonRef pick(JsonRef d) { return d["a"]["b"]["c"]; }   // 三级链：return 位置
+int present = doc["server"].has(k);       // 下标结果作接收者
+JsonRef b = doc.get("a").get("b");        // 方法结果链
 ```
 
-**反例**——以下四种都不编译：
+**仍不可用**——临时值只能出现在语句/赋值的起始处，不能被继续取字段或作实参：
 
 ```ct
-// 1) 三级下标链：即使位于声明初始化/赋值位置也不行
-JsonRef c = doc["a"]["b"]["c"];
-// error: a method call on a temporary is only allowed at the start of a statement or of an assignment
-
-// 2) 对临时值调方法（报错与三级链不是同一条）
-doc["server"].has(k);
-// error: method receiver must be a variable, an element, a call or a field chain
-
-// 3) 把两级下标链当函数参数
-take(doc["server"]["port"]);
-// error: 同上
-
-// 4) 方法结果链（与下标链不同，两级也不成立）
-JsonRef b = doc.get("a").get("b");
-// error: method receiver must be a variable, an element, a call or a field chain
+take(doc["a"]["b"]);          // 链式结果作函数实参
+doc["a"]["b"]["c"].p != 0     // 链式结果取字段（C 层：cannot take the address of an rvalue）
+doc["a"]["b"]["c"] = value;   // 三级写链：a custom subscript write needs a statement and an lvalue receiver
 ```
 
-边界来自编译器对「临时值接收者」的限制：声明初始化/赋值位置允许一次临时值接收者，方法参数位置和三级链不允许；方法结果链则完全不属于可接受的接收者形态。它是**编译器限制**，不是 ct-json 放弃链式访问；拆成局部变量可绕过全部四种。
+v0.62.0 放开的是「临时值作接收者」在语句/赋值起始处的限制；函数实参位置、rvalue 取字段与自定义下标写入仍未放开。拆成局部变量可绕过全部三种，登记为 `JSON-5`（实参/条件）与 `JSON-6`（三级写链）。
 
 ## 六、其他必须改写的写法
 
