@@ -94,7 +94,9 @@ esac
 case " $want " in
 *' g7 '*)
     d="$tmp/g7"; export_tree "$d"
-    printf 'token AKIAABCDEFGHIJKLMNOP\n' > "$d/leak.txt"
+    # The credential is assembled at run time: spelling it out here would make
+    # g7's own repository scan hit this fixture (the gate scans tools/ too).
+    printf 'token AKIA%s\n' 'ABCDEFGHIJKLMNOP' > "$d/leak.txt"
     expect_red "g7 planted secret" g7 "$d"
     ;;
 esac
