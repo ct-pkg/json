@@ -28,17 +28,22 @@ export_tree() {
 expect_red() {
     name="$1"; gate="$2"; dir="$3"
     out="$dir/.gate.out"
-    if bash "$dir/tools/check.sh" "$gate" >"$out" 2>&1; then
+    bash "$dir/tools/check.sh" "$gate" >"$out" 2>&1
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
         printf 'NEGATIVE-FAIL %-28s gate %s stayed green\n' "$name" "$gate"
         fail=1
+    elif [ "$rc" -eq 2 ]; then
+        # An unimplemented gate also exits non-zero; that is not a red proof.
+        printf 'NEGATIVE-FAIL %-28s gate %s skipped (rc=2), not a red\n' "$name" "$gate"
+        fail=1
     else
-        rc=$?
         printf 'red ok %-31s gate %s rc=%s | %s\n' "$name" "$gate" "$rc" \
             "$(grep -m 1 -E '^(FAIL|error|.*error:)' "$out" | cut -c1-120)"
     fi
 }
 
-want="${*:-g0 g1 g6 g7 g8}"
+want="${*:-g0 g1 g2 g6 g7 g8}"
 
 case " $want " in
 *' g0 '*)
@@ -72,6 +77,14 @@ case " $want " in
 ## 9. 收口动作
 CARD
     expect_red "g1 version-minor mismatch" g1 "$d"
+    ;;
+esac
+
+case " $want " in
+*' g2 '*)
+    d="$tmp/g2"; export_tree "$d"
+    sed -i '' '/^| R-A-10 /d' "$d/docs/acceptance-map.md"
+    expect_red "g2 missing requirement row" g2 "$d"
     ;;
 esac
 

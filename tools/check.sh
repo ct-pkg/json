@@ -216,7 +216,67 @@ g1)
     ;;
 
 g2)
-    skip "尚未立项，无设计验收映射；需 docs/acceptance-map.md（R-* → ACC-*），在设计的 phase 接"
+    map="${ACCEPTANCE_MAP:-$pkg/docs/acceptance-map.md}"
+    req="${REQUIREMENTS:-$pkg/docs/requirements.md}"
+    [ -f "$map" ] || fail "missing docs/acceptance-map.md"
+    [ -f "$req" ] || fail "missing docs/requirements.md"
+
+    n_req="$(grep -cE '^\| *R-[A-E]-[0-9]+' "$req" || true)"
+    [ "${n_req:-0}" -ge 1 ] || fail "requirements have no R-<group>-<n> rows"
+
+    n_map="$(awk -F'|' '
+        function trim(x) { gsub(/^[ \t]+|[ \t]+$/, "", x); return x }
+        /^\| *R-[A-E]-[0-9]+ / {
+            n++
+            id = trim($2); acc = trim($5); ver = trim($6); dest = trim($8)
+            if (id in rid) { printf "%s: duplicate requirement row\n", id > "/dev/stderr"; bad = 1 }
+            rid[id] = 1
+            if (acc !~ /^ACC-[0-9]+$/) {
+                printf "%s: ACC must be ACC-<n>, got \"%s\"\n", id, acc > "/dev/stderr"; bad = 1
+            }
+            if (acc in seen) { printf "duplicate ACC id: %s\n", acc > "/dev/stderr"; bad = 1 }
+            seen[acc] = 1
+            if (index(ver, "`") == 0) {
+                printf "%s: verification must name a command or anchor in backticks\n", id > "/dev/stderr"; bad = 1
+            }
+            if (dest == "") { printf "%s: destination is empty\n", id > "/dev/stderr"; bad = 1 }
+        }
+        END {
+            if (n == 0) { print "acceptance map has no R rows" > "/dev/stderr"; bad = 1 }
+            if (bad) exit 1
+            print n
+        }
+    ' "$map")" || fail "acceptance map rows invalid"
+    [ "$n_map" -eq "$n_req" ] \
+        || fail "acceptance map has $n_map R rows, requirements have $n_req (one ACC per R-* required)"
+
+    for id in $(grep -oE '^\| *R-[A-E]-[0-9]+' "$req" | sed 's/^| *//' | sort -u); do
+        grep -qE "^\| *$id " "$map" || fail "requirement $id is missing from the acceptance map"
+    done
+
+    if [ -f "$pkg/src/json.h.ct" ]; then
+        n_sym=0
+        for sym in $(awk '
+            /^[[:space:]]*pub [A-Za-z_].*\(/ {
+                line = $0
+                sub(/^[[:space:]]*pub[[:space:]]+/, "", line)
+                if (line ~ /^(struct|union|enum|trait)[[:space:]]/) next
+                sub(/\(.*/, "", line)
+                n = split(line, a, /[[:space:]]+/)
+                s = a[n]
+                sub(/^\*/, "", s)
+                print s
+            }
+        ' "$pkg/src/json.h.ct" | sort -u); do
+            n_sym=$((n_sym + 1))
+            grep -qF "\`$sym\`" "$map" || fail "public symbol $sym has no ACC mapping in docs/acceptance-map.md"
+        done
+        [ "$n_sym" -ge 1 ] || fail "no public symbols found in src/json.h.ct"
+    else
+        n_sym=0
+    fi
+
+    printf 'ok g2 (%s R rows, %s ACC ids, %s public symbols)\n' "$n_map" "$n_map" "$n_sym"
     ;;
 
 g3)
