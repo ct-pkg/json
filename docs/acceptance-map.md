@@ -1,6 +1,6 @@
 # 验收映射（R-* → ACC-*）
 
-- 基线：`src/json.h.ct`（树模型，唯一 import 入口）+ `test/j1_roundtrip.ct`；CT `v0.62.0`；HEAD `28e97ad`。
+- 基线：`src/json.h.ct`（树模型，唯一 import 入口）+ `test/j1_roundtrip.ct`；CT `v0.62.0`；锚点 `v0.2.0`（PH-2 收口）。
 - 依据：[docs/requirements.md](requirements.md) 的 38 条 `R-*`、[docs/spec/ct-json-0.1.0.md](spec/ct-json-0.1.0.md)、`docs/decisions/D-001…D-006.md`。
 - 旧 `json.ct`（零分配视图 + `JsonOut`）是已废止的 0.1.0 实现，只作 `g3` 的 golden；本表**不**拿它的行号当新基线的证据。
 - 判定只取五值：`已满足` / `需新增` / `需变更` / `待确认` / `不做`。`待确认` 在本 phase 收口时必须清零。
@@ -19,11 +19,11 @@
 | R-A-07 | 缺项/类型错/越界可区分 | 已满足 | ACC-07 | `test/j1_roundtrip.ct` 的 `missing key answers an empty handle`、`get_idx(-1) answers an empty handle`、`as_int on an empty handle is a type error` | 空句柄 + `JSON_ERR_TYPE`/`RANGE`（D-001 改写，不恢复 READ_* 五值） | 本 phase |
 | R-A-08 | UTF-8 校验是可判定开关 | 需新增 | ACC-08 | `grep -q 'json_decode_strict' src/json.h.ct`（计划）+ `probe: 0xFF → JSON_ERR_UTF8` | 当前无 strict 入口；默认宽松是现状 | PH-4 |
 | R-A-09 | 实数精度可核对；1e999 等边界有明确期望 | 需变更 | ACC-09 | `probe: as_double("1e999")` 期望 `JSON_ERR_RANGE` | 0.30000000000000004 精确；1e999 当前返回 inf rc=0（JSON-10） | PH-4（JSON-10） |
-| R-A-10 | 深度是硬上限，调用方不能打穿 C 栈 | 已满足 | ACC-10 | `ct build test/depth_1m.ct -I src -o /tmp/depth1m && /tmp/depth1m` | 10^6 层返回 -9、root 空；固定 64 无调高入口（D-005） | PH-4（复核） |
-| R-A-11 | 大数组/大对象重复查找不退化为 O(n²) | 已满足 | ACC-11 | `ct build test/perf_20k.ct -I src -o /tmp/perf20k && /tmp/perf20k` | 实测 1.707 ms（< 10 ms）；数组 O(1) 下标、对象 Map 索引（D-005） | PH-4（复核） |
+| R-A-10 | 深度是硬上限，调用方不能打穿 C 栈 | 已满足 | ACC-10 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/depth_1m.ct -I src -o /tmp/depth1m && /tmp/depth1m` | 10^6 层返回 -9、root 空；固定 64 无调高入口（D-005） | PH-4（复核） |
+| R-A-11 | 大数组/大对象重复查找不退化为 O(n²) | 已满足 | ACC-11 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/perf_20k.ct -I src -o /tmp/perf20k && /tmp/perf20k` | 本机多次实测 1.7–2.4 ms（< 10 ms）；数组 O(1) 下标、对象 Map 索引（D-005） | PH-4（复核） |
 | R-A-12 | 流首 BOM 与空白行为唯一 | 已满足 | ACC-12 | `probe: json_decode(BOM+"{}")` 期望 -2 | BOM 一律按非法字符拒绝，不自动剥离（D-002）；用例待 PH-4 补 | PH-4（补用例） |
 | R-B-01 | 追写器结构错误立即拒绝 | 不做 | ACC-13 | `grep -q 'JsonOut' src/json.h.ct` 期望 1（不存在） | 旧 `JsonOut` 不在包公开面，树编码由 `json_encode` 承担（D-006） | PH-6（文档明确） |
-| R-B-02 | 字符串转义 `"`、`\`、控制字节；非 ASCII 原样 | 已满足 | ACC-14 | `test/j1_roundtrip.ct` 的 `round trip: escapes` 与 `a NUL value round-trips` | `j1_enc_bytes`；JSON-12 修复后控制字节写 4 位（`5359fb4`） | 本 phase |
+| R-B-02 | 字符串转义 `"`、`\`、控制字节；非 ASCII 原样 | 已满足 | ACC-14 | `test/j1_roundtrip.ct` 的 `round trip: escapes`、`a NUL value round-trips` 与 `a 0x1F value round-trips` | `j1_enc_bytes`；JSON-12 修复后控制字节写 4 位（`5359fb4`） | 本 phase |
 | R-B-03 | 非有限实数必须拒绝，不得写出 nan/inf | 需变更 | ACC-15 | `probe: set_double(NaN) → json_encode` 期望 `NULL` + `JSON_ERR_RANGE` | 当前输出 `{"x":nan}`（JSON-9） | PH-5（JSON-9） |
 | R-B-04 | 字符串/键支持长度，含 `\u0000` 可往返 | 已满足 | ACC-16 | `test/j1_roundtrip.ct` 的 `nul_value_contract` 与 `a key with an embedded NUL is data` | 值/键均为 `Str`；NUL 值 encode→decode 保持 3 字节（JSON-12 修复后） | 本 phase |
 | R-B-05 | 输出缓冲不足可判定 | 不做 | ACC-17 | `grep -q 'JSON_EMIT_TRUNCATED' src/json.h.ct` 期望 1（不存在） | `json_encode` 分配缓冲返回，没有调用方缓冲可截断（D-006） | PH-6（文档明确） |
@@ -116,6 +116,6 @@
 | phase | 本表里归它的条目 |
 | --- | --- |
 | PH-3 | 无（写能力的新需求在 PH-3 卡另行编号） |
-| PH-4 | R-A-08、R-A-09（JSON-10）、R-A-12（补用例） |
-| PH-5 | R-A-01、R-B-03（JSON-9）、R-C-01（JSON-11）、R-C-03、R-C-05 |
-| PH-6 | R-B-01、R-B-05、R-B-06（文档明确不做）、R-E-02、R-E-03、R-E-04、R-E-05、R-E-06 |
+| PH-4 | R-A-08、R-A-09（JSON-10）、R-A-10、R-A-11（复核 D-005）、R-A-12（补用例） |
+| PH-5 | R-A-01、R-B-03（JSON-9）、R-C-01（JSON-11）、R-C-03、R-C-05；R-B-04/R-B-07 已满足，只做回归复核 |
+| PH-6 | R-B-01、R-B-05、R-B-06（文档明确不做）、R-E-02、R-E-03、R-E-04、R-E-05、R-E-06；R-E-01 已满足，只做复核 |

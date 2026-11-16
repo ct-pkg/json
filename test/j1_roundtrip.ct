@@ -449,6 +449,24 @@ static void nul_value_contract(struct Stats *st)
     }
     free(enc);
     json_free(root);
+
+    /* 0x1F goes through the same `\u00XX` branch; pin a non-NUL byte too. */
+    root = empty_ref();
+    back = empty_ref();
+    text = "{\"s\":\"a\\u001fb\"}";
+    rc = json_decode(text, (int)strlen(text), &root);
+    check(st, rc == JSON_OK, "0x1F fixture decodes");
+    if (rc == JSON_OK) {
+        enc = json_encode(root);
+        rc = enc != 0 ? json_decode(enc, (int)strlen(enc), &back) : JSON_ERR_MEMORY;
+        check(st, rc == JSON_OK, "the 0x1F encoding parses");
+        sp = json_as_str(member_cstr(back, "s"), &slen);
+        check(st, sp != 0 && slen == 3 && sp[1] == 31 && sp[2] == 'b',
+              "a 0x1F value round-trips");
+        free(enc);
+        json_free(back);
+    }
+    json_free(root);
 }
 
 static void cycle_contract(struct Stats *st)
