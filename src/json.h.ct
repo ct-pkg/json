@@ -1147,6 +1147,11 @@ pub int json_as_double(JsonRef v, double *out)
         if (tmp == 0) return JSON_ERR_MEMORY;
         d = strtod(tmp, 0);
         free(tmp);
+        /* 1e999 parses to inf; the raw literal stays valid JSON, but the
+           double conversion must answer RANGE and leave `out` untouched. */
+        if (d != d || d > 1.7976931348623157e308 || d < -1.7976931348623157e308) {
+            return JSON_ERR_RANGE;
+        }
         *out = d;
         return JSON_OK;
     }
