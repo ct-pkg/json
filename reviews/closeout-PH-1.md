@@ -146,3 +146,9 @@ VERIFY: 通过 | 复核人: verify-ph1 | 日期: 2026-11-17 | 基线: 1d405a9
 2. 在本提交上创建 annotated tag `v0.1.1`，message 含 `PH-1` 与收口提交 sha 前 7 位。
 3. 按 6.7 V-7 四项核对后推送 tag；分支推送是 tag ④ 的前提，按用户「继续推进，直到所有 phase 完成」的指令执行。
 4. 实际命令与输出落在 `docs/evidence/release-PH-1.md`（tag 创建后补，属证据提交，不改变 tag 指向）。
+
+## 追加注记
+
+- 2026-11-17：tag `v0.1.1` 已在收口提交 `619f3d9` 上创建并推送；V-7 四项核对与 `g8` 输出见
+  [docs/evidence/release-PH-1.md](../docs/evidence/release-PH-1.md)。
+- 复核 F2 的 JSON-7 修复 sha 已在本提交内改为 `1d405a9`，与该发现的处置一致。
