@@ -1,12 +1,12 @@
 ---
 id: JSON-8
-status: open
+status: fixed
 priority: P1
 owner: 本包（门禁实现）
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `1f0c86b`；克隆里构造合法 phase 收口（`0.1.1`→`0.2.0`、PH-2 卡 closed、tag `v0.2.0`、正文含 `PH-2`）后 `bash tools/check.sh g8` rc=1，报 `moves version without an issue reference (V-3)`
+evidence: 基线 `1f0c86b`；克隆里构造合法 phase 收口（`0.1.1`→`0.2.0`、PH-2 卡 closed、tag `v0.2.0`、正文含 `PH-2`）后 `bash tools/check.sh g8` rc=1，报 `moves version without an issue reference (V-3)`；修复提交 `7a6c599`
 ---
 
 # JSON-8 g8 把 phase 收口的 MINOR 移动当成 fix
@@ -45,7 +45,7 @@ $ echo $?
 
 ## 处置（fixed 时写）
 
-2026-11-17：`tools/check.sh` g8 的版本检查按「MINOR 移动 / PATCH 移动」分支，分别校验 V-1 与 V-3/V-4；`tools/negatives/run.sh` 补两个负例（PATCH 缺 issue、MINOR 缺 closed 卡）。
+2026-11-17（修复提交 `7a6c599`）：`tools/check.sh` g8 的版本检查按「MINOR 移动 / PATCH 移动」分支，分别校验 V-1 与 V-3/V-4；`tools/negatives/run.sh` 补两个负例（PATCH 缺 issue、MINOR 缺 closed 卡）。
 
 ```console
 $ # 合法 phase 收口
