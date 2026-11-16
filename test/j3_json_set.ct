@@ -130,6 +130,62 @@ static void failure_contract(struct Stats *st)
     json_free(root);
 }
 
+/* VERIFY found that a malformed segment after the first missing
+ * intermediate was accepted. Each case starts from its own empty tree. */
+static JsonRef fresh_obj(struct Stats *st, char *name)
+{
+    JsonRef r = empty_ref();
+    check(st, json_decode("{}", 2, &r) == JSON_OK, name);
+    return r;
+}
+
+static void syntax_contract(struct Stats *st)
+{
+    JsonRef root;
+    JsonRef seven = value_of(st, "7", "syntax seven decodes");
+    long long n = 0;
+
+    root = fresh_obj(st, "trailing dot fixture decodes");
+    check(st, set_path(root, "a.", seven) == JSON_ERR_RANGE,
+          "trailing dot on an empty tree is RANGE");
+    check(st, json_obj_len(root) == 0, "trailing dot creates nothing");
+    json_free(root);
+
+    root = fresh_obj(st, "double dot fixture decodes");
+    check(st, set_path(root, "a..b", seven) == JSON_ERR_RANGE,
+          "double dot on an empty tree is RANGE");
+    check(st, json_obj_len(root) == 0, "double dot creates nothing");
+    json_free(root);
+
+    root = fresh_obj(st, "trailing dot after prefix fixture decodes");
+    check(st, set_path(root, "a.b.", seven) == JSON_ERR_RANGE,
+          "trailing dot after a missing prefix is RANGE");
+    check(st, json_obj_len(root) == 0, "the missing prefix is not created");
+    json_free(root);
+
+    root = fresh_obj(st, "triple dot fixture decodes");
+    check(st, set_path(root, "a...b", seven) == JSON_ERR_RANGE,
+          "triple dot is RANGE");
+    check(st, json_obj_len(root) == 0, "triple dot creates nothing");
+    json_free(root);
+
+    root = fresh_obj(st, "literal key fixture decodes");
+    check(st, set_path(root, "a.0", seven) == JSON_OK,
+          "a numeric segment is a literal key");
+    check(st, json_as_int(member_cstr(member_cstr(root, "a"), "0"), &n) == JSON_OK && n == 7,
+          "a.0 addresses the literal key 0");
+
+    root.set("x.y", seven);
+    check(st, member_cstr(root, "x.y").p != 0, "set stores a literal dotted key");
+    check(st, set_path(root, "x.y", seven) == JSON_OK, "json_set splits on the dot");
+    check(st, member_cstr(root, "x.y").p != 0, "the literal dotted key is untouched");
+    check(st, json_tag(member_cstr(root, "x")) == JSON_TAG_OBJ,
+          "json_set created the nested x object");
+
+    json_free(seven);
+    json_free(root);
+}
+
 static void ownership_contract(struct Stats *st)
 {
     JsonRef root = empty_ref();
@@ -172,6 +228,7 @@ int main(void)
 
     path_contract(&st);
     failure_contract(&st);
+    syntax_contract(&st);
     ownership_contract(&st);
 
     if (st.failed == 0) {
