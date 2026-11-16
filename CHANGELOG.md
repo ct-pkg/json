@@ -2,6 +2,27 @@
 
 项目产品版本见 `ct.pkg#version`。本文件按生成块 §6.7 记录版本：`MINOR` 与 phase 同步，`PATCH` 与 fix 同步；fix 不打 tag，phase 收口时打 annotated tag。
 
+## 0.4.0 — 2026-11-17（PH-4 收口）
+
+### Added
+
+- **`json_decode_strict`** 与 `JSON_ERR_UTF8`（-14）：严格校验字符串值/键的 UTF-8，拒绝 overlong、UTF-8 编码代理、>U+10FFFF 与孤立续字节；宽松入口行为不变（`2a0ee7a`）。
+- `test/j4_decode.ct`：16 条断言，覆盖 strict/宽松差异、BOM 拒绝与两模式同根（红证 `d97c790`）。
+
+### Fixed
+
+- **JSON-10**：`json_as_double("1e999")` 返回 `inf` rc=0；改为非有限值返回 `JSON_ERR_RANGE` 且 `out` 不变（红证 `2b88322`，修复 `a57502b`）。
+
+### Changed
+
+- 规范 §3.1 补 strict 入口与 `JSON_ERR_UTF8`；R-A-08/R-A-09 在验收映射中标「已满足」。
+- `docs/evidence/decode-bounds.md`：10^6 层、20k 遍历、strict/BOM、精度的原始输出。
+
+### Known limitations
+
+- BOM 一律拒绝，不自动剥离；深度固定 64 层，无调高入口。
+- `g4` / `g5` 仍退出 2：归 PH-6。
+
 ## 0.3.0 — 2026-11-17（PH-3 收口）
 
 ### Added

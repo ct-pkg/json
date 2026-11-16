@@ -16,3 +16,4 @@
 | 2026-11-17 | 开卡 PH-3：json_set 路径写入 | [PH-3 卡](phases/PH-3/card.md) |
 | 2026-11-17 | PH-3 收口：`json_set` 路径写入、55 条夹具、规范 §3.8 / ACC-39；tag `v0.3.0` | [closeout-PH-3.md](../reviews/closeout-PH-3.md)、[j3_json_set.ct](../test/j3_json_set.ct)、[CHANGELOG](../CHANGELOG.md) |
 | 2026-11-17 | 开卡 PH-4：严格 UTF-8、实数溢出、BOM、深度/性能复核 | [PH-4 卡](phases/PH-4/card.md) |
+| 2026-11-17 | PH-4 收口：strict UTF-8、1e999 溢出、BOM、深度/性能复核；tag `v0.4.0` | [closeout-PH-4.md](../reviews/closeout-PH-4.md)、[decode-bounds.md](evidence/decode-bounds.md) |

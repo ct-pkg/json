@@ -4,7 +4,7 @@
 - phase 目录：`docs/phases/PH-4/`
 - version-minor：4
 - 规范版本：1.15.0
-- 状态：in-progress
+- 状态：closed
 - criteria-sha256：55f8f1dcad4253e79f73090b69e11b589599111794494912ea374ca4a9922f66
 - tasks-sha256：eb02202df1568f497aaf5c3608a200e91ebf5796196693627142d2247020bc3c
 
@@ -103,3 +103,13 @@
 | 4 | 打 annotated tag `v0.4.0` 并推送（V-7） | `git cat-file -t v0.4.0` |
 | 5 | 写收口回顾（`lessons` 带 `landing`） | `reviews/closeout-PH-4.md` |
 | 6 | 更新 `docs/session-map.md` 与本目录清单 | 同上 |
+
+## 10. 收口记录（2026-11-17）
+
+- E-P4-1…E-P4-5 逐条通过，原始输出见 [reviews/closeout-PH-4.md](../../../reviews/closeout-PH-4.md)。
+- 独立 VERIFY 通过（基线 `36d9cc3`）；F1–F4 已按非阻断项修正（`f38f400`）。
+- 版本四项：`ct.pkg#version = 0.4.0`，MINOR=4=PH-4，PATCH=0（JSON-10 属 phase 内修复）。
+- JSON-10 本 phase 收口；JSON-11/9 归 PH-5；JSON-3/5/6 语言层。
+- tag：`v0.4.0`（annotated），随收口提交创建并推送（6.7 V-7）。
+- 流程偏差：本卡在 T1/T2 实现后补立，已在卡内与回顾登记；后续 phase 先立卡。
+- 未覆盖：g4/g5 归 PH-6；不宣称全门禁绿。

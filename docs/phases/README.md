@@ -74,6 +74,6 @@
 | PH-1 | J1 收口：链式访问解禁与 JSON-1/2 收口 | closed（2026-11-17，v0.1.1） | [card.md](PH-1/card.md)、[收口报告](../../reviews/closeout-PH-1.md) |
 | PH-2 | 需求基线与验收映射（R-* → ACC-*） | closed（2026-11-17，v0.2.0） | [card.md](PH-2/card.md)、[收口报告](../../reviews/closeout-PH-2.md) |
 | PH-3 | J3 函数式写入 `json_set` | closed（2026-11-17，v0.3.0） | [card.md](PH-3/card.md)、[收口报告](../../reviews/closeout-PH-3.md) |
-| PH-4 | 解码边界（UTF-8、精度、深度、查找、BOM） | in-progress | [card.md](PH-4/card.md) |
+| PH-4 | 解码边界（UTF-8、精度、深度、查找、BOM） | closed（2026-11-17，v0.4.0） | [card.md](PH-4/card.md)、[收口报告](../../reviews/closeout-PH-4.md) |
 | PH-5 | 编码边界与错误契约 | 待开卡 | — |
 | PH-6 | 包交付、发布与验收文档收口 | 待开卡 | — |
