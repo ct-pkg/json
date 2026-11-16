@@ -1,12 +1,12 @@
 ---
 id: JSON-10
-status: open
+status: fixed
 priority: P2
 owner: 本包（解码）
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `fe6bb5a`；`json_as_double` 对 `1e999` 返回 rc=0、值 inf；期望 `JSON_ERR_RANGE`
+evidence: 基线 `fe6bb5a`；`json_as_double` 对 `1e999` 返回 rc=0、值 inf；修复提交 `a57502b`（红证 `2b88322`）
 ---
 
 # JSON-10 `json_as_double` 对溢出实数返回 inf 而非 RANGE
@@ -61,9 +61,11 @@ $ echo $?
 
 `rc == JSON_ERR_RANGE`，且 `d` 不被写入（与 `json_as_int` 的越界行为一致）。
 
-## 修复提示
+## 修复（`a57502b`）
 
-`j1_double` 里对 `strtod` 结果做有限性检查（`d != d` 或 `d > DBL_MAX` 或 `d < -DBL_MAX` → `JSON_ERR_RANGE`），不要只依赖 `errno`。
+`json_as_double` 对 `strtod` 结果做有限性检查（`d != d` 或超出 `DBL_MAX` → `JSON_ERR_RANGE`），
+`out` 不被写入。回归断言：`test/j1_roundtrip.ct` 的 `1e999 is a range error`、
+`-1e999 is a range error`、`a range error leaves out untouched`。
 
 ## 阻塞点
 

@@ -96,9 +96,12 @@ pub struct JsonRef {
 
 ```ct
 pub int json_decode(char *text, int len, JsonRef *out);
+pub int json_decode_strict(char *text, int len, JsonRef *out);
 ```
 
 返回 `JSON_OK` 时 `out->p` 指向根节点；失败返回负错误码，`out` 不变。`len` 显式传入，不依赖 `strlen`。
+
+`json_decode` 是宽松入口：不校验 UTF-8，字符串里 ≥0x7F 的字节原样透传。`json_decode_strict` 共用同一 parser，但在每个字符串值/键解出后校验 UTF-8，非法序列返回 `JSON_ERR_UTF8`（-14）；overlong、UTF-8 编码的代理、>U+10FFFF 与孤立续字节都拒绝。两种模式都不剥离 BOM：`EF BB BF` 一律按非法字符报 `JSON_ERR_SYNTAX`。
 
 ### 3.2 读：字符串键下标（正式入口）
 

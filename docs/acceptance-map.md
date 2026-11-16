@@ -17,11 +17,11 @@
 | R-A-05 | true/false/null 可判别，不跨类型取值 | 已满足 | ACC-05 | `test/j1_roundtrip.ct` 的 `as_bool reads true` 与 `as_bool on null is a type error` | null 只能靠 tag/is_null 判别 | 本 phase |
 | R-A-06 | 重复键 last-wins；转义键可被普通键命中 | 已满足 | ACC-06 | `test/j1_roundtrip.ct` 的 `round trip: duplicate key last wins` 与 `round trip: escaped key` | 键统一 `Str`，按解码后内容比较 | 本 phase |
 | R-A-07 | 缺项/类型错/越界可区分 | 已满足 | ACC-07 | `test/j1_roundtrip.ct` 的 `missing key answers an empty handle`、`get_idx(-1) answers an empty handle`、`as_int on an empty handle is a type error` | 空句柄 + `JSON_ERR_TYPE`/`RANGE`（D-001 改写，不恢复 READ_* 五值） | 本 phase |
-| R-A-08 | UTF-8 校验是可判定开关 | 需新增 | ACC-08 | `grep -q 'json_decode_strict' src/json.h.ct`（计划）+ `probe: 0xFF → JSON_ERR_UTF8` | 当前无 strict 入口；默认宽松是现状 | PH-4 |
-| R-A-09 | 实数精度可核对；1e999 等边界有明确期望 | 需变更 | ACC-09 | `probe: as_double("1e999")` 期望 `JSON_ERR_RANGE` | 0.30000000000000004 精确；1e999 当前返回 inf rc=0（JSON-10） | PH-4（JSON-10） |
+| R-A-08 | UTF-8 校验是可判定开关 | 已满足 | ACC-08 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j4_decode.ct -I src -o /tmp/j4 && /tmp/j4` | 16 条断言：0xFF/overlong/UTF-8 代理/孤立续字节拒绝，合法 2/4 字节通过，BOM 两模式拒绝 | 本 phase |
+| R-A-09 | 实数精度可核对；1e999 等边界有明确期望 | 已满足 | ACC-09 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j1_roundtrip.ct -I src -o /tmp/j1p4 && /tmp/j1p4` | 1e999/-1e999 → RANGE 且 out 不变；0.30000000000000004 bit-exact；1e-400 → 0.0（JSON-10 修复 `a57502b`） | 本 phase |
 | R-A-10 | 深度是硬上限，调用方不能打穿 C 栈 | 已满足 | ACC-10 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/depth_1m.ct -I src -o /tmp/depth1m && /tmp/depth1m` | 10^6 层返回 -9、root 空；固定 64 无调高入口（D-005） | PH-4（复核） |
 | R-A-11 | 大数组/大对象重复查找不退化为 O(n²) | 已满足 | ACC-11 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/perf_20k.ct -I src -o /tmp/perf20k && /tmp/perf20k` | 本机多次实测 0.9–2.4 ms（< 10 ms）；数组 O(1) 下标、对象 Map 索引（D-005） | PH-4（复核） |
-| R-A-12 | 流首 BOM 与空白行为唯一 | 已满足 | ACC-12 | `probe: json_decode(BOM+"{}")` 期望 -2 | BOM 一律按非法字符拒绝，不自动剥离（D-002）；用例待 PH-4 补 | PH-4（补用例） |
+| R-A-12 | 流首 BOM 与空白行为唯一 | 已满足 | ACC-12 | `ct build test/j4_decode.ct ... && /tmp/j4` | BOM 在宽松/严格两模式都报 -2；前后空白仍允许（D-002，`2a0ee7a`） | 本 phase |
 | R-B-01 | 追写器结构错误立即拒绝 | 不做 | ACC-13 | `grep -q 'JsonOut' src/json.h.ct` 期望 1（不存在） | 旧 `JsonOut` 不在包公开面，树编码由 `json_encode` 承担（D-006） | PH-6（文档明确） |
 | R-B-02 | 字符串转义 `"`、`\`、控制字节；非 ASCII 原样 | 已满足 | ACC-14 | `test/j1_roundtrip.ct` 的 `round trip: escapes`、`a NUL value round-trips` 与 `a 0x1F value round-trips` | `j1_enc_bytes`；JSON-12 修复后控制字节写 4 位（`5359fb4`） | 本 phase |
 | R-B-03 | 非有限实数必须拒绝，不得写出 nan/inf | 需变更 | ACC-15 | `probe: set_double(NaN) → json_encode` 期望 `NULL` + `JSON_ERR_RANGE` | 当前输出 `{"x":nan}`（JSON-9） | PH-5（JSON-9） |
@@ -54,9 +54,9 @@
 
 | 判定 | 条数 |
 | --- | --- |
-| 已满足 | 23 |
-| 需新增 | 3 |
-| 需变更 | 10 |
+| 已满足 | 25 |
+| 需新增 | 2 |
+| 需变更 | 9 |
 | 待确认 | 0 |
 | 不做 | 3 |
 | 合计 | 39 |
@@ -79,6 +79,7 @@
 | `json_free` | 函数 | ACC-27 |
 | `json_last_error` | 函数 | ACC-21 |
 | `json_decode` | 函数 | ACC-01 |
+| `json_decode_strict` | 函数 | ACC-08 |
 | `json_encode` | 函数 | ACC-18 |
 | `json_tag` | 函数 | ACC-26 |
 | `json_is_null` | 函数 | ACC-31 |
@@ -109,7 +110,7 @@
 | Issue | 需求 | 现象 | 去向 |
 | --- | --- | --- | --- |
 | JSON-9 | R-B-03 | `set_double(NaN)` 后 `json_encode` 输出 `{"x":nan}`，不是合法 JSON | PH-5 |
-| JSON-10 | R-A-09 | `json_as_double("1e999")` 返回 inf 且 rc=0，期望 `JSON_ERR_RANGE` | PH-4 |
+| JSON-10 | R-A-09 | `json_as_double("1e999")` 返回 inf 且 rc=0；已修（`a57502b`），期望 `JSON_ERR_RANGE` | 已收口 |
 | JSON-11 | R-A-01、R-C-01 | 解析失败只有错误码，没有 offset/line/column | PH-5 |
 | JSON-12 | R-B-02、R-B-04、R-B-07 | 控制字节转义写 6 位，含 NUL 的值编码后 3 字节变 5 字节（`5359fb4` 已修） | PH-5（复核回归） |
 
