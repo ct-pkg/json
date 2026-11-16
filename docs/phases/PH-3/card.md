@@ -4,7 +4,7 @@
 - phase 目录：`docs/phases/PH-3/`
 - version-minor：3
 - 规范版本：1.15.0
-- 状态：in-progress
+- 状态：closed
 - criteria-sha256：e5c16eec956f0d6e9b1e80abd5310062699c066a44738cd2e4b16d291023a329
 - tasks-sha256：efd3b3a0952da031dfa0195f1b80ed11ecb2736870f39eeb639831dce9d4055b
 
@@ -94,3 +94,12 @@
 | 4 | 打 annotated tag `v0.3.0` 并推送（V-7） | `git cat-file -t v0.3.0` |
 | 5 | 写收口回顾（`lessons` 带 `landing`） | `reviews/closeout-PH-3.md` |
 | 6 | 更新 `docs/session-map.md` 与本目录清单 | 同上 |
+
+## 10. 收口记录（2026-11-17）
+
+- E-P3-1…E-P3-3 逐条通过，原始输出见 [reviews/closeout-PH-3.md](../../../reviews/closeout-PH-3.md)。
+- 首轮 VERIFY 发现畸形路径段漏检，已在 phase 内按 T-7 红（`e7503c8`）→ 绿（`0312fc1`）修复；夹具 55 条、ASan 0 命中。
+- 版本四项：`ct.pkg#version = 0.3.0`，MINOR=3=PH-3，PATCH=0（phase 内修复并入本版）。
+- 未新开 issue；JSON-6 仍为语言层，JSON-9/10/11 去向不变。
+- tag：`v0.3.0`（annotated），随收口提交创建并推送（6.7 V-7）。
+- 未覆盖：g4/g5 归 PH-6；不宣称全门禁绿。

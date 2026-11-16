@@ -14,3 +14,4 @@
 | 2026-11-17 | 开卡 PH-2：需求基线、验收映射、g2 与 Q 项裁定 | [PH-2 卡](phases/PH-2/card.md)、[roadmap](planning/roadmap.md) |
 | 2026-11-17 | PH-2 收口：R-*→ACC-* 映射、g2、Q 项裁定、缺口立案；tag `v0.2.0` | [closeout-PH-2.md](../reviews/closeout-PH-2.md)、[acceptance-map.md](acceptance-map.md)、[CHANGELOG](../CHANGELOG.md) |
 | 2026-11-17 | 开卡 PH-3：json_set 路径写入 | [PH-3 卡](phases/PH-3/card.md) |
+| 2026-11-17 | PH-3 收口：`json_set` 路径写入、55 条夹具、规范 §3.8 / ACC-39；tag `v0.3.0` | [closeout-PH-3.md](../reviews/closeout-PH-3.md)、[j3_json_set.ct](../test/j3_json_set.ct)、[CHANGELOG](../CHANGELOG.md) |

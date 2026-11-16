@@ -223,7 +223,7 @@ pub int json_set(JsonRef root, Str path, JsonRef value);
 
 - 缺失的中间对象自动创建；最后一段不存在则追加，已存在则替换且保持首次位置（R-D-08）。
 - 失败：空路径或空段（`"a..b"`、`".a"`、`"a."`）→ `JSON_ERR_RANGE`；根或中间不是对象 → `JSON_ERR_TYPE`；`value` 是空句柄 → `JSON_ERR_TYPE`。
-- 路径段 `Str` 构造失败 → `JSON_ERR_MEMORY`；节点/容器分配失败沿用库内 `j1_alloc` 的 abort 约定，不返回错误码。
+- 路径段 `Str` 构造失败、键 `Str` 拷贝失败与容器扩容失败 → `JSON_ERR_MEMORY`；节点与容器头部（`j1_alloc`）分配失败沿用 abort 约定，不返回错误码。
 - 类型冲突与畸形路径在改动树之前校验，失败时树不变；段构造失败发生在该段写入前，之前已创建的中间对象可能保留。
 - 所有权与 `set` 一致：容器 retain 一份，调用方保留自己的句柄并负责 release。
 - 不支持数组下标段（`"a.0"` 是字面键 `"0"`），也不支持转义点号；键含 `.` 时直接用 `set`。
