@@ -48,7 +48,8 @@ pub enum JsonCode {
     JSON_ERR_MEMORY = -10,
     JSON_ERR_TYPE = -11,
     JSON_ERR_RANGE = -12,
-    JSON_ERR_CYCLE = -13
+    JSON_ERR_CYCLE = -13,
+    JSON_ERR_UTF8 = -14
 }
 
 /* The uniform element type of both containers. `p == 0` is the empty handle:
@@ -148,6 +149,11 @@ impl Drop for JsonArr {
    `out` is untouched. `text` is not modified. Nesting depth limit: 64. */
 pub int json_decode(char *text, int len, JsonRef *out);
 
+/* R-A-08: same parse, plus strict UTF-8 validation of string values and keys.
+   Invalid UTF-8 answers JSON_ERR_UTF8; the lenient entry keeps passing bytes
+   above 0x7F through unchanged. */
+pub int json_decode_strict(char *text, int len, JsonRef *out);
+
 /* Serialise into a fresh NUL-terminated buffer the caller frees. Objects keep
    insertion order, parsed numbers keep their source text, shared subtrees are
    written once per occurrence. Returns 0 on an empty handle or a cycle (the
@@ -216,6 +222,7 @@ struct J1Parser {
     int pos;
     int depth;
     int err;
+    int strict;
 }
 
 struct J1Buf {
@@ -594,6 +601,48 @@ static int j1_string_into(struct J1Parser *p, char *out, int *outn)
     }
 }
 
+/* Strict-mode UTF-8 validation of one decoded string value or key. Rejects
+   overlong forms, UTF-8 encoded surrogates, values above U+10FFFF and lone
+   continuation bytes. */
+static int j1_utf8_valid(char *s, int n)
+{
+    int i = 0;
+    while (i < n) {
+        int c = s[i];
+        int need;
+        int cp;
+        int k;
+        if (c < 0) c = c + 256;
+        if (c < 0x80) {
+            i = i + 1;
+            continue;
+        }
+        if (c >= 0xC2 && c <= 0xDF) {
+            need = 1;
+            cp = c & 0x1F;
+        } else if (c >= 0xE0 && c <= 0xEF) {
+            need = 2;
+            cp = c & 0x0F;
+        } else if (c >= 0xF0 && c <= 0xF4) {
+            need = 3;
+            cp = c & 0x07;
+        } else {
+            return 0;
+        }
+        if (i + need >= n) return 0;
+        for (k = 1; k <= need; k = k + 1) {
+            int b = s[i + k];
+            if (b < 0) b = b + 256;
+            if ((b & 0xC0) != 0x80) return 0;
+            cp = (cp << 6) | (b & 0x3F);
+        }
+        if (need == 2 && (cp < 0x800 || (cp >= 0xD800 && cp <= 0xDFFF))) return 0;
+        if (need == 3 && (cp < 0x10000 || cp > 0x10FFFF)) return 0;
+        i = i + need + 1;
+    }
+    return 1;
+}
+
 static int j1_string(struct J1Parser *p, Str *out)
 {
     char *buf;
@@ -612,6 +661,11 @@ static int j1_string(struct J1Parser *p, Str *out)
     free(buf);
     if (s.len < 0) {
         j1_fail(p, JSON_ERR_MEMORY);
+        return 0;
+    }
+    if (p->strict && !j1_utf8_valid(s.data, s.len)) {
+        s.release();
+        j1_fail(p, JSON_ERR_UTF8);
         return 0;
     }
     *out = s;
@@ -861,7 +915,7 @@ static int j1_value(struct J1Parser *p, JsonRef *out)
     return 0;
 }
 
-pub int json_decode(char *text, int len, JsonRef *out)
+static int j1_decode(char *text, int len, JsonRef *out, int strict)
 {
     struct J1Parser p;
     JsonRef root = j1_empty();
@@ -879,6 +933,7 @@ pub int json_decode(char *text, int len, JsonRef *out)
     p.pos = 0;
     p.depth = 0;
     p.err = 0;
+    p.strict = strict;
     if (!j1_value(&p, &root)) {
         j1_last_error = p.err == 0 ? JSON_ERR_SYNTAX : p.err;
         return j1_last_error;
@@ -891,6 +946,16 @@ pub int json_decode(char *text, int len, JsonRef *out)
     }
     out->p = root.p;
     return JSON_OK;
+}
+
+pub int json_decode(char *text, int len, JsonRef *out)
+{
+    return j1_decode(text, len, out, 0);
+}
+
+pub int json_decode_strict(char *text, int len, JsonRef *out)
+{
+    return j1_decode(text, len, out, 1);
 }
 
 /* ------------------------------------------------------------- encoding */
