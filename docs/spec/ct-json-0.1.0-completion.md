@@ -59,6 +59,8 @@ $ /tmp/jsongate | diff - json.expected.out
 
 ## 五、0.1.1 验收记录（可用性补丁，CT v0.53.0）
 
+> **历史记录（vendor 模型）。** v0.62.0 起 `ct get` 改为 store 模型，不再写 `vendor/`；正确 import 是 `import json;`。以下 §5.1–§5.3 的命令与输出保留为当时证据，当前消费链断点见 `issues/JSON-15.md`。
+
 **本版收的只有一条**：让 ct-json 能被 `ct get` + `ct install` 正常消费。实现与公开 API 未改，未加任何新特性；依赖 CT 语言能力的条目全部留在 §四。
 
 ### 5.1 错误定性：`ctc -I src src/json.h.ct` 的 `expected a field name`
@@ -91,6 +93,8 @@ $ /tmp/jsongate | diff - json.expected.out
 | 修复：`ct.pkg` 加 `namespace = json` | 同上 | exit 0；程序输出 `consumer fails=0` |
 
 原因：包根即单元根，单元在 `src/` 下，而 import 首段会被 `namespace` 剥掉，所以消费路径必须是 `json::src::json`。
+
+> **历史记录（v0.53.0 vendor 模型）。** v0.62.0 起 `ct get` 不再写 `vendor/`；store 模型下同一流程在 `ct build` 阶段断在 ctc 泛型解析（JSON-15）。以下命令与输出保留为历史证据，不代表当前可消费。
 
 ### 5.3 验收证据
 

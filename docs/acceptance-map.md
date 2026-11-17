@@ -43,7 +43,7 @@
 | R-D-07 | 缺键与 null 值可区分 | 已满足 | ACC-31 | `test/j1_roundtrip.ct` 的 `explicit null answers a node` 与 `is_null` | 空句柄 vs tag 0 | 本 phase |
 | R-D-08 | 重复键位置与值固定（last-wins，保首位） | 已满足 | ACC-32 | `test/j1_roundtrip.ct` 的 `overwriting keeps the key position` 与 duplicate round trip | `j1_obj_put` 命中即换值、位置不变 | 本 phase |
 | R-D-09 | 点分对象路径写入 `json_set` | 已满足 | ACC-39 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j3_json_set.ct -I src -o /tmp/j3 && /tmp/j3` | 55 条断言：新建/覆盖/保位、失败契约、所有权（PH-3） | 已收口（PH-3） |
-| R-E-01 | 包可 import，不需复制单文件 | 已满足 | ACC-33 | `bash tools/check.sh g0` 的 `ct pkg check` + `test/pkg/consumer.ct` | JSON-4 修复；`import json::src::json;` | 本 phase |
+| R-E-01 | 包可 import，不需复制单文件 | 需变更 | ACC-33 | `ct get` + `ct build`（store 模型） | `import json;` 能解析；但 `ct build` 在 `src/json.h.ct:86` 被 ctc 泛型拒绝（JSON-15）；旧 vendor 写法过期 | JSON-15（上游） |
 | R-E-02 | 公开面最小且可枚举，实现细节不进生成头 | 已满足 | ACC-34 | `bash tools/export-surface.sh` | 41 个公开符号（7 类型 + 34 函数/方法）冻结在 docs/api-surface.txt，脚本逐行 diff | 本 phase |
 | R-E-03 | 许可与同批包及上游一致 | 已满足 | ACC-35 | `grep -q '^## 许可' README.md` + `grep -q 'licence = MIT' ct.pkg` | ct.pkg / LICENSE / README 三处 MIT | 本 phase |
 | R-E-04 | 编译器下限与依赖声明 | 已满足 | ACC-36 | `bash tools/export-surface.sh`（内含 requires 比对） | `ct.pkg#requires` 与 `//@ct-requires` 都是 `ct >= 0.53.0` | 本 phase |
@@ -54,9 +54,9 @@
 
 | 判定 | 条数 |
 | --- | --- |
-| 已满足 | 36 |
+| 已满足 | 35 |
 | 需新增 | 0 |
-| 需变更 | 0 |
+| 需变更 | 1 |
 | 待确认 | 0 |
 | 不做 | 3 |
 | 合计 | 39 |

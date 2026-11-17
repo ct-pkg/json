@@ -16,17 +16,28 @@
 
 ## 安装
 
+`ct get` 把包放进 `~/.ct/pkg/<publisher>/<name>/<version>`，并在消费方根目录写 `ct.lock`（v2）。**v0.62.0 起没有 `vendor/`**；旧文档里的 `-I vendor/json` 与 `import json::src::json` 已过期。
+
 ```sh
-# 在消费方工程内
-ct get /path/to/ct-json      # 写入 vendor/json/ 与 ct.lock
-ct install                   # 打印 ct build -I vendor/json <unit>.ct -o build
+# GitHub：显式写版本；不写 @<version> 会落到最旧的 v0.1.1（JSON-16）
+ct get https://github.com/ct-pkg/json@0.6.0
+
+# 本地开发：按本仓 ct.pkg 的 version
+ct get /path/to/ct-json
+
+ct install     # 打印 ct build <unit>.ct -o build；并打印 # lock-format: v2
 ```
 
 ```ct
-import json::src::json;      // namespace = json 剥掉首段；单元在 src/ 下
+import json;
 ```
 
-要求 `ct >= 0.53.0`（`ct.pkg#requires` 与 `src/json.h.ct` 的 `//@ct-requires` 一致）。`ctc`（L0）不支持泛型声明，不是受支持路径。
+- `ct.lock` 一行记录：`ct/json <version> git|dir <source> <sha|-> src sha256:<digest>`。
+- **当前断点（JSON-15）**：v0.63.2 下 `ct build` 解析到 `src/json.h.ct:86` 时，ctc（L0）报
+  `expected a field name`（`Map<Str, int>` 等泛型声明），消费链在编译阶段断开。
+- 本会话沙箱内 `~/.ct` 不可写（`Operation not permitted`）；实测用 `HOME=/tmp/...` 重定向完成。
+  真实 shell 的 store 权限需另测。
+- 要求 `ct >= 0.53.0`（`ct.pkg#requires` 与 `//@ct-requires` 一致）；store 模型本身要 `ct >= 0.62.0`。
 
 ## 快速开始
 

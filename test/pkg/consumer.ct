@@ -1,13 +1,14 @@
 /*
  * 包消费冒烟：模拟 ct get + ct install 之后的第三方工程。
  *
- * 构建（仓库内，验证 import 路径与清单 namespace 一致）：
+ * 构建（仓库内；v0.63.2 下这是 JSON-15 的红证，ctc 在 src/json.h.ct:86 报
+ * `expected a field name`）：
  *   CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std \
- *     ct build test/pkg/consumer.ct -I . -o /tmp/pkg_consumer
+ *     ct build test/pkg/consumer.ct -I src -o /tmp/pkg_consumer
  *
- * 构建（真实消费方）：
- *   ct get <本仓库> && ct install
- *   CT_STD_DIR=... ct build -I vendor/json main.ct -o build
+ * 真实消费方（store 模型，v0.62.0 起无 vendor/）：
+ *   ct get https://github.com/ct-pkg/json@0.6.0 && ct install
+ *   ct build main.ct -o build        # 当前同样断在 JSON-15
  *
  * 覆盖安装后必须可用的九种形态：单层读、覆盖写、新增键、两级链读、
  * get_idx、has(Str)、对象/数组迭代、编码回字符串、共享引用。
@@ -16,7 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-import json::src::json;
+import json;
 
 int main(void)
 {

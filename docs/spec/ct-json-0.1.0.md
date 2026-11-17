@@ -12,17 +12,26 @@
 由此定两条口径：
 
 1. **演进方向不是扩张本包自有句柄层。** `JsonRef` / `JsonNode` 是 0.1.0 的过渡实现：为了在 CT 当前的 `Vec` / `Map` 能力边界内把读写做对（保序、共享子对象、引用计数、数字双轨）。凡是看起来像「JSON 库需要 X」的诉求，先翻译成「`Vec` / `Map` 需要什么语法能力」；能落在容器既有能力上的，不记成 JSON 库的需求（逐条重述见 `docs/review/ct-json-0.1.0-js-style-eval.md` §五）。
-2. **0.1.1 只修可用性与正确性，不加接口层能力。** 本版验收口径：`ct get` + `ct install` 装完后消费方能 `import json::src::json`、9 个样例可编可跑、门禁绿；共享库机制尚未落地，本轮以既有 `vendor/<包>` 方式为准。需要新语言能力（同名重载、属性访问协议、容器迭代、字面量→`Str`）的条目一律标「等 CT」留在 backlog，不实现。
+2. **0.1.1 只修可用性与正确性，不加接口层能力。** 本版验收口径：`ct get` + `ct install` 装完后消费方能 `import json;`、样例可编可跑、门禁绿；v0.62.0 起为 store 模型（无 `vendor/`），当前消费链断点见 JSON-15。需要新语言能力（同名重载、属性访问协议、容器迭代、字面量→`Str`）的条目一律标「等 CT」留在 backlog，不实现。
 
-消费方式（0.1.1 实测）：
+消费方式（v0.63.2 实测，v0.62.0 起为 store 模型）：
 
+```sh
+# 消费方根目录需先有 ct.pkg
+ct get https://github.com/ct-pkg/json@0.6.0   # 或 ct get /path/to/ct-json
+# → ~/.ct/pkg/ct/json/0.6.0/ 与消费方根目录的 ct.lock（v2）；不再有 vendor/
+ct install                                    # 打印 ct build <unit>.ct -o build
 ```
-consumers/  ct get ../../            # → vendor/json/ + ct.lock（消费方自身需先有 ct.pkg）
-            ct install               # 打印 ct build -I vendor/json <unit>.ct -o build
-            # 源码里：import json::src::json;
+
+```ct
+import json;   // store 模型下只写包名
 ```
 
-`ct.pkg` 的 `namespace = json` 会剥掉 import 首段，`ct install` 只发 `-I vendor/json`，所以 import 路径里仍要写 `src/json`（包根即单元根，单元在 `src/` 下）。
+`ct.lock` 记录 `ct/json <version> git|dir <source> <sha|-> src sha256:<digest>`。
+
+**断点：** v0.63.2 下 `ct build` 解析到 `src/json.h.ct` 后由 ctc（L0）解析，泛型声明
+`Map<Str, int> *index;` 报 `expected a field name`，rc=1；详见 `issues/JSON-15.md`。
+GitHub 默认不带 `@<version>` 时还会落到最旧的 `v0.1.1`（`issues/JSON-16.md`），必须显式写版本。
 
 ## 一、定位
 

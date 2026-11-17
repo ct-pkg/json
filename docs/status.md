@@ -7,6 +7,7 @@
 | 当前版本 | `0.6.0`（落点见 `AGENTS.md` 的 `版本落点`） |
 | 当前 phase | **PH-6 已收口**（2026-11-17，`v0.6.0`）；roadmap 的 PH-1…PH-6 全部收口 |
 | 门禁入口 | `bash tools/check.sh <g0…g9|all>` |
+| 消费方式 | `ct get`（store + `ct.lock`，v0.62.0 起无 `vendor/`）；v0.63.2 下 `ct build` 断在 ctc 泛型（JSON-15），GitHub 默认版本落到 v0.1.1（JSON-16） |
 
 ## 门禁现状
 
@@ -24,3 +25,7 @@
 | g9 | 可运行 | 生成块 pin 与主规范一致 |
 
 退出 2 的检查不计入「通过」：它们缺前置产物，补上前不得宣称门禁全绿。
+
+> **工具链告警（2026-11-17）**：当前 `ct v0.63.2`（`~/.local/bin/ct`，mtime 08:04）在
+> `src/json.h.ct:86` 报 `expected a field name`；`v0.4.0`、`v0.5.0`、`HEAD` 的干净
+> `git archive` 都复现，`g3`/`g4`/`g7` 与消费方 `ct build` 同时红。见 `issues/JSON-15.md`。

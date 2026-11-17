@@ -1,6 +1,6 @@
 # JSON-4 包无法被 `ct get` / `ct install` 消费
 
-- status: **fixed**（0.1.1，提交 `1df313b`；红证 `338664c`）
+- status: **reopened**（原 0.1.1 修复 `1df313b` 只覆盖 vendor 模型；store 模型下于 2026-11-17 重新复现）
 - 归属: **本包清单/构建路径问题**，不是语言层
 - 优先级: P0（阻塞「装完可用」这一唯一验收口径）
 - 影响面: 任何第三方工程按标准包流程装本包后，`import` 无法解析
@@ -53,3 +53,34 @@ consumer fails=0                     # exit 0
 ## 遗留
 
 包根迁移（把单元从 `src/` 移到包根）留待共享库机制/包根约定落地后再做，见 `docs/spec/ct-json-0.1.0-completion.md` §四 backlog #10。本轮不预埋。
+
+## 重新打开：store 模型下（2026-11-17，v0.63.2）
+
+v0.62.0 起 `ct get` 不再写 `vendor/`：包进 `~/.ct/pkg/<publisher>/<name>/<version>`，
+消费方根目录得到 `ct.lock`（v2）。按新模型实测：
+
+```console
+$ ct get https://github.com/ct-pkg/json@0.6.0
+installed 1 package(s)
+$ cat ct.lock
+# ct-lock 2
+ct/json 0.6.0 git https://github.com/ct-pkg/json 0576bd4... src sha256:f2968fe...
+$ cat > main.ct <<'CT'
+import json;
+int main(void) { return 0; }
+CT
+$ ct build main.ct -o build
+.../ct/json/0.6.0/src/json.h.ct:86:8: error: expected a field name
+$ echo $?
+1
+```
+
+- 正确 import 形态是 `import json;`（不是旧的 `json::src::json`；后者在 store 下报
+  `cannot resolve import 'json/src/json'`）。
+- 断点在编译：store 解析到 `src/json.h.ct` 后由 ctc（L0）解析，泛型声明
+  `Map<Str, int> *index;` 报 `expected a field name`。详见 `JSON-15`。
+- GitHub 默认版本还有另一个上游缺陷：不写 `@<version>` 时落到最旧的 `v0.1.1`；见 `JSON-16`。
+- 旧 vendor 流程（`ct build -I vendor/json main.ct`）在 v0.63.2 上同样复现该 ctc 错误，
+  因此原「已修复」的验证不再可复现。
+
+结论：**JSON-4 未闭合**，等 JSON-15（上游 ctc 泛型或本包公共头去泛型重构）解决后重验。

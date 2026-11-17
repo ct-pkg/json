@@ -150,7 +150,7 @@
 
 | 编号 | 需求（要解决的问题） | 验收判据 | 状态 | 依据 / 阻塞 |
 | --- | --- | --- | --- | --- |
-| R-E-01 | 包必须可 `import`，而不是复制 2,286 行含 `main` 的单文件 | ① 拆出 `.h.ct` / `.ct` 后消费者 `import json;` 可编译运行；② 生成头不含 `main`、demo、测试；③ README 给出 import 用法 | 需新增 | `json-package-refactor.md:56-78`；`README.md:145-146` |
+| R-E-01 | 包必须可 `import`，而不是复制 2,286 行含 `main` 的单文件 | ① `ct get` 后消费方 `import json;` 可编译运行；② 生成头不含 `main`、demo、测试；③ README 给出 import 用法 | 需变更 | `json-package-refactor.md:56-78`；`issues/JSON-15.md`；`README.md`「安装」 |
 | R-E-02 | 公开面必须最小且可枚举；实现细节不得进生成头 | ① 导出符号清单冻结并脚本比对；② 7 个 `Json*Ops` 结构体不出现；③ 公开结构体字段宽度不依赖 `JSON_OUT_DEPTH` 宏，否则消费者报未声明标识符 | 需新增 | `json-package-refactor.md:19-41`、`76`；`json.ct:69`、`99-100`、`899-918` |
 | R-E-03 | 许可必须与同批包及上游权利一致 | ① `ct.pkg#licence`、`LICENSE`、`README` 三处一致为 MIT；② 许可裁定见 Q-02（已裁定 MIT）；③ MIT 只要求保留版权与许可声明，静态链入闭源程序无需开源 | 已满足 | `ct.pkg:10`；`LICENSE:1-2`；`ct-lang/LICENSE.EXCEPTION:28-46`；`ct-sse/LICENSE:1` |
 | R-E-04 | 编译器下限与依赖必须声明 | ① `ct.pkg#requires` 非空且与 `//@ct-requires` 一致；② 视图 API 下限 v0.22.0（`loop`）；树 API 下限 v0.30.0（`Vec`/`Map`），用 `Str` 则 v0.36.0；③ 低于下限时 `ct get` 报 `requires` 文案 | 需新增 | `roadmap.md:38,45,52`；`json.ct:24-26` |
