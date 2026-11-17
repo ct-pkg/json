@@ -128,7 +128,7 @@
 | --- | --- | --- | --- | --- |
 | R-C-01 | 解析失败必须给出稳定错误码与位置 | ① 错误码 + `json_error_offset/line/column`；② 行列 1-based、按字节；③ 失败后 root 为空句柄 | 已满足 | `src/json.h.ct:499-516`、`331-344`；`test/j5_errors.ct` |
 | R-C-02 | 解析错误与访问器错误必须分离，访问器不得污染 parse 状态 | ① `read_error` 五值（NONE/KIND/MISSING/RANGE/INTEGER）；② 成功访问后 `JSON_READ_NONE`；③ parse 的 `error()` 不被访问器改写 | 已满足 | `json.ct:56-60`、`1577-1584`、`1741-1743` |
-| R-C-03 | 错误码常量、错误文案与未知码行为必须成为公开契约或明确不作契约 | ① `JSON_ERR_*` 数值冻结（`pub enum JsonCode`）；② `json_message` 只保证非空；③ 未知码返回固定文案（D-001） | 已满足 | `src/json.h.ct:37-53`、`346-370`；`test/j5_errors.ct` |
+| R-C-03 | 错误码常量、错误文案与未知码行为必须成为公开契约或明确不作契约 | ① `JSON_ERR_*` 数值冻结（`pub enum JsonCode`）；② `json_message` 只保证非空；③ 未知码返回固定文案（D-001） | 已满足 | `src/json.h.ct:37-53`、`346-364`；`test/j5_errors.ct` |
 | R-C-04 | 非错误情况不得误报 | ① 重复键、未知成员、空容器、前后空白均 rc=1 且 `error()==JSON_OK`；② 注释、尾逗号、`NaN`、`+1` 必须报错（严格 RFC 8259） | 已满足 | `json.ct:1590-1623`、`2097-2155` |
 | R-C-05 | 解码到 `Map`/`Vec` 失败时的部分结果与资源必须可判定 | ① 语法错误不返回部分树并释放已建节点；② OOM 按 `j1_alloc` abort（不返回错误码，D-001 注记）；③ 深度超限 `JSON_ERR_DEPTH`；④ 重复键 last-wins | 已满足 | `src/json.h.ct:810-931`、`989-1027`；`test/j5_errors.ct`；`docs/evidence/error-contract.md` |
 

@@ -6,12 +6,12 @@ owner: 本包（工具链兼容）+ 上游提案
 created: 2026-11-17
 last-touched: 2026-11-17
 block:
-evidence: 基线 `0757aac`；`ct v0.63.0` 把 `9223372036854775808ULL` 生成成 `9223372036854775807ULL`；`bash tools/check.sh g3` 干净重建 rc=1
+evidence: 基线 `0757aac`；`ct v0.63.0` / `v0.63.2` 把 `9223372036854775808ULL` 生成成 `9223372036854775807ULL`；`bash tools/check.sh g3` 干净重建 rc=1
 ---
 
-# JSON-13 CT v0.63.0 把 2^63 无符号字面量钳成 INT64_MAX
+# JSON-13 CT v0.63.0/v0.63.2 把 2^63 无符号字面量钳成 INT64_MAX
 
-- 归属：**上游工具链缺陷**（`ct` v0.63.0 codegen），本包只能绕行。
+- 归属：**上游工具链缺陷**（`ct` v0.63.0 / v0.63.2 codegen），本包只能绕行。
 - 优先级：P1（g3 红；`json_as_int(INT64_MIN)` 误报 `JSON_ERR_RANGE`）。
 - 影响面：`json.ct` 的 golden `int64 minimum`、`src/json.h.ct` 的 int64 下限转换。
 - 关联：R-A-04、R-C-04、G3；提案（DB-5/CF）：上游修字面量 codegen。

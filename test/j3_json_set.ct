@@ -122,6 +122,8 @@ static void failure_contract(struct Stats *st)
     check(st, json_obj_len(member_cstr(root, "a")) == 1,
           "rejected writes leave the object size unchanged");
 
+    json_free(root);
+    root = empty_ref();
     check(st, json_decode("[]", 2, &root) == JSON_OK, "array root decodes");
     check(st, set_path(root, "a.b", seven) == JSON_ERR_TYPE,
           "a non-object root answers TYPE");
