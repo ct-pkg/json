@@ -69,7 +69,7 @@
   - `ct get` 写 `~/.ct/pkg/ct/json/<version>` 与消费方 `ct.lock`（v2），没有 `vendor/`；
   - `ct install` 打印 `ct build <unit>.ct -o build`，不再发 `-I vendor/json`；
   - 消费方 `ct build` 在 `src/json.h.ct:86` 被 ctc 泛型解析拦住（JSON-15）；
-  - GitHub 不带 `@<version>` 时默认落 `v0.1.1`（JSON-16），必须显式写版本。
+  - GitHub 默认应取最新；当前 `*` 解析取最低 tag `v0.1.1`（JSON-16），暂写 `@0.6.0`。
 - **验收**：
   1. 消费方源码只出现 `import json;`；
   2. `ct get` + `ct install` + `ct build` 返回 0，`test/pkg/consumer.ct` 可跑；

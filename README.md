@@ -19,7 +19,7 @@
 `ct get` 把包放进 `~/.ct/pkg/<publisher>/<name>/<version>`，并在消费方根目录写 `ct.lock`（v2）。**v0.62.0 起没有 `vendor/`**；旧文档里的 `-I vendor/json` 与 `import json::src::json` 已过期。
 
 ```sh
-# GitHub：显式写版本；不写 @<version> 会落到最旧的 v0.1.1（JSON-16）
+# GitHub：默认应取最新；当前 v0.63.2 的 * 取最低 tag（JSON-16），暂写 @0.6.0
 ct get https://github.com/ct-pkg/json@0.6.0
 
 # 本地开发：按本仓 ct.pkg 的 version

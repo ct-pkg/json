@@ -31,7 +31,7 @@ import json;   // store 模型下只写包名
 
 **断点：** v0.63.2 下 `ct build` 解析到 `src/json.h.ct` 后由 ctc（L0）解析，泛型声明
 `Map<Str, int> *index;` 报 `expected a field name`，rc=1；详见 `issues/JSON-15.md`。
-GitHub 默认不带 `@<version>` 时还会落到最旧的 `v0.1.1`（`issues/JSON-16.md`），必须显式写版本。
+GitHub 默认应取最新；当前 v0.63.2 的 `*` 解析取最低 tag（`v0.1.1`，`issues/JSON-16.md`），暂写 `@0.6.0`。
 
 ## 一、定位
 
