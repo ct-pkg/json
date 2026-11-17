@@ -43,7 +43,7 @@ expect_red() {
     fi
 }
 
-want="${*:-g0 g1 g2 g4 g6 g7 g8}"
+want="${*:-g0 g1 g2 g4 g5 g6 g7 g8}"
 
 case " $want " in
 *' g0 '*)
@@ -97,6 +97,19 @@ case " $want " in
     d="$tmp/g4"; export_tree "$d"
     awk 'BEGIN { for (i = 0; i < 301; i++) print "x" }' > "$d/docs/too-long.md"
     expect_red "g4 oversized document" g4 "$d"
+    ;;
+esac
+
+case " $want " in
+*' g5 '*)
+    # g5 walks commit ancestry, so these copies need real .git history.
+    d="$tmp/g5"; git clone -q "$pkg" "$d"
+    sed -i '' '/^| PH3-T1 /d' "$d/docs/evidence/red-proofs.md"
+    expect_red "g5 missing task row" g5 "$d"
+
+    d="$tmp/g5-base"; git clone -q "$pkg" "$d"
+    sed -i '' 's/^| PH4-T1 | e67adc5 |/| PH4-T1 | deadbee |/' "$d/docs/evidence/red-proofs.md"
+    expect_red "g5 baseline not a commit" g5 "$d"
     ;;
 esac
 

@@ -394,7 +394,78 @@ g4)
     ;;
 
 g5)
-    skip "尚无 phase 任务与逐任务红证；红证登记从 PH-1 开工起生效（6.6 T-7）"
+    reg="${RED_PROOFS:-$pkg/docs/evidence/red-proofs.md}"
+    neg="${GATE_NEGATIVES:-$pkg/docs/evidence/gate-negatives.md}"
+    [ -f "$reg" ] || fail "missing docs/evidence/red-proofs.md"
+    [ -f "$neg" ] || fail "missing docs/evidence/gate-negatives.md"
+
+    tasklist="/tmp/ctjson_g5_tasks.txt"
+    : > "$tasklist"
+    for card in "$pkg"/docs/phases/PH-*/card.md; do
+        [ -f "$card" ] || continue
+        pn="$(sed -n 's/^- 编号：PH-\([0-9][0-9]*\)$/\1/p' "$card" | head -n 1)"
+        [ -n "$pn" ] || continue
+        awk -F'|' -v pn="$pn" '
+            /^\| T[0-9]+ / {
+                id = $2
+                gsub(/[ \t]/, "", id)
+                print "PH" pn "-" id
+            }
+        ' "$card" >> "$tasklist"
+    done
+    sort -u "$tasklist" -o "$tasklist"
+    n_task="$(wc -l < "$tasklist" | tr -d ' ')"
+    [ "$n_task" -ge 1 ] || fail "no phase tasks to verify"
+
+    while IFS= read -r t; do
+        [ -n "$t" ] || continue
+        grep -qE "^\| *$t *\|" "$reg" || fail "missing red proof for $t"
+    done < "$tasklist"
+
+    rows="/tmp/ctjson_g5_rows.txt"
+    : > "$rows"
+    awk -F'|' '
+        function trim(x) { gsub(/^[ \t]+|[ \t]+$/, "", x); return x }
+        /^\| *PH[0-9]+-T[0-9]+ / {
+            n++
+            id = trim($2); base = trim($3); cmd = trim($4); res = trim($5); signer = trim($6)
+            if (id in seen) { printf "duplicate red proof: %s\n", id > "/dev/stderr"; bad = 1 }
+            seen[id] = 1
+            if (signer == "") { printf "%s: signer is empty\n", id > "/dev/stderr"; bad = 1 }
+            if (cmd == "") { printf "%s: command is empty\n", id > "/dev/stderr"; bad = 1 }
+            if (res == "") { printf "%s: result is empty\n", id > "/dev/stderr"; bad = 1 }
+            if (cmd ~ /no-test:/) {
+                if (index(cmd, ":") == 0 || length(cmd) <= 9) {
+                    printf "%s: no-test needs a reason\n", id > "/dev/stderr"; bad = 1
+                }
+            } else {
+                if (base !~ /^[0-9a-f]{7,40}$/) {
+                    printf "%s: baseline must be a commit sha, got \"%s\"\n", id, base > "/dev/stderr"; bad = 1
+                } else {
+                    print id, base > "'"$rows"'"
+                }
+            }
+        }
+        END {
+            if (n == 0) { print "no red-proof rows" > "/dev/stderr"; bad = 1 }
+            if (bad) exit 1
+        }
+    ' "$reg" || fail "red-proof table is invalid"
+
+    while read -r id base; do
+        [ -n "$id" ] || continue
+        git -C "$pkg" cat-file -e "$base^{commit}" 2>/dev/null \
+            || fail "$id: baseline $base is not a commit"
+        git -C "$pkg" merge-base --is-ancestor "$base" HEAD \
+            || fail "$id: baseline $base is not an ancestor of HEAD"
+    done < "$rows"
+
+    for g in g0 g1 g2 g4 g6 g7 g8; do
+        grep -q "red ok $g" "$neg" || fail "gate negative evidence missing for $g"
+    done
+
+    printf 'ok g5 (%s tasks, %s red proofs, gate negatives covered)\n' \
+        "$n_task" "$(wc -l < "$rows" | tr -d ' ')"
     ;;
 
 g6)

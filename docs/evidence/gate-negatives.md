@@ -72,3 +72,23 @@ $ echo $?
 | g8 合法 phase 收口 | 0.1.1→0.2.0，PH-2 closed，tag v0.2.0，正文 PH-2 | 绿 | rc=0 |
 | g8 PATCH 移动缺 issue | 0.1.1→0.1.2，正文不引用 issue | 红（V-3） | rc=1 |
 | g8 MINOR 移动缺 closed 卡 | 0.1.1→0.2.0，正文含 PH-2，无卡片 | 红（V-1） | rc=1 |
+
+## 追加：g4 与 surface（PH-6）
+
+```console
+$ bash tools/negatives/run.sh g4
+red ok g4 oversized document           gate g4 rc=1 | FAIL doc-size: ... has 301 lines (max 300)
+baseline: e43eaac430e34b6dcc08f85ba9f2628d6a7f9b15
+$ echo $?
+0
+```
+
+## 追加：g2 与 g4（PH-6 收口前）
+
+```console
+$ bash tools/negatives/run.sh g2
+red ok g2 missing requirement row      gate g2 rc=1 | FAIL g2: acceptance map has 37 R rows, requirements have 38 (one ACC per R-* required)
+red ok g2 public symbol unmapped       gate g2 rc=1 | FAIL g2: public symbol json_decode has no ACC mapping in docs/acceptance-map.md
+$ echo $?
+0
+```
