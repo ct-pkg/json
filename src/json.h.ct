@@ -1230,7 +1230,7 @@ static int j1_lit_to_int(Str s, long long *out)
         i = 1;
     }
     if (i >= s.len) return JSON_ERR_TYPE;
-    limit = neg ? 9223372036854775808ULL : 9223372036854775807ULL;
+    limit = neg ? (9223372036854775807ULL + 1ULL) : 9223372036854775807ULL;
     while (i < s.len) {
         int c = s.data[i];
         int d;

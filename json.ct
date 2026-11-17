@@ -1249,7 +1249,7 @@ impl JsonValue for JsonNumberOps {
             neg = 1;
             i++;
         }
-        limit = neg ? 9223372036854775808ULL : 9223372036854775807ULL;
+        limit = neg ? (9223372036854775807ULL + 1ULL) : 9223372036854775807ULL;
         mag = 0;
         while (i < end) {
             char c;
@@ -1271,7 +1271,7 @@ impl JsonValue for JsonNumberOps {
             i++;
         }
         if (neg) {
-            if (mag == 9223372036854775808ULL) {
+            if (mag == (9223372036854775807ULL + 1ULL)) {
                 *out = (-9223372036854775807LL - 1);
             } else {
                 *out = -(long long)mag;
