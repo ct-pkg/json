@@ -128,8 +128,9 @@ impl Drop for JsonObj {
         free(self->keys);
         free(self->vals);
         if (self->index != 0) {
-            /* `Map::release` treats `h == 0` as "already released"; an object
-               with no keys never allocated the header. */
+            /* `Map::release` treats `h == 0` as "already released"; j1_obj_new
+               hands the header allocated by `Map<Str,int> z = {}` to the
+               object, so `h` is non-NULL for every live object. */
             if (self->index->h != 0) self->index->release();
             free(self->index);
         }
@@ -372,7 +373,7 @@ static JsonObj *j1_obj_new(void)
     o->keys = 0;
     o->vals = 0;
     o->index = j1_alloc(sizeof(z));
-    o->index->h = 0;
+    o->index->h = z.h;
     return o;
 }
 
