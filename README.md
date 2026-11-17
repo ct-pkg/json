@@ -1,281 +1,100 @@
-# json — a zero-allocation JSON reader/writer in plain CT
+<!-- applies-to: 0.5.0 -->
+# ct-json — CT 的引用计数 JSON 树
 
-> English · [中文](#中文)
+`ct-json` 是 CT 的外部包：把一段内存里的 JSON 字节严格解码为可读写的树，再把树编码回 JSON 字节。零分配只读视图是 0.1.0 的历史实现，已废止；当前唯一公开模型是树。
 
-> **Status (2026-11-15, 0.1.1):** the decided scope is **read + write** over a tree whose
-> subobjects may be shared, with reference-counted lifetime (`json_retain` /
-> `json_release` public). Numbers are dual-track: parsed literals round-trip verbatim,
-> written values are int64 or double. Cycles may exist in memory and are rejected at
-> encode time. See [ADR-0001](docs/adr/0001-tree-data-model.md),
-> [ADR-0002](docs/adr/0002-mutable-scope.md), [ADR-0003](docs/adr/0003-reference-sharing.md),
-> [ADR-0004](docs/adr/0004-number-representation.md), [ADR-0005](docs/adr/0005-cycle-handling.md),
-> [ADR-0006](docs/adr/0006-public-refcount.md). Access uses single-level string subscript
-> (`v["server"]`, [ADR-0007](docs/adr/0007-js-style-access.md)); numeric index uses
-> `get_idx(i)` and `v[0]` is unsupported in 0.1.0. Keys are `Str` (deep-copied on insert);
-> containers release their elements. The tree model and the write surface now live in
-> [`src/json.h.ct`](src/json.h.ct) (0.1.1 = usability patch: the package installs and
-> imports; no new features). Everything below about the zero-allocation view describes
-> the superseded 0.1.0 file; this README documents what exists, not the decided target.
+- 版本：`0.5.0`（以 `ct.pkg#version` 为准）
+- 规范：[docs/spec/ct-json-0.1.0.md](docs/spec/ct-json-0.1.0.md)（公开 API 与模型）
+- 验收：[docs/acceptance-map.md](docs/acceptance-map.md)（R-* → ACC-*）
+- 变更：[CHANGELOG.md](CHANGELOG.md)
 
-Chained reads work on CT **v0.62.0**: `doc["a"]["b"]["c"]`, `doc["server"].has(k)` and
-`doc.get("a").get("b")` all compile in declaration and assignment position. A chained
-result still cannot be used as a call argument or take a field, and a multi-level write
-chain (`doc["a"]["b"]["c"] = v`) is still rejected; keep a local variable for those.
-Numeric index remains `get_idx(i)` (`v[0]` is not array access).
+## 定位与边界
 
-## As a package (0.1.1)
+做：严格 RFC 8259 词法、树模型读取、字符串键下标、路径写入、编码、稳定错误码与位置。
 
-ct-json is an external package, not a CT built-in. Build path is the L2 `ct` tool
-(`ctc`, the L0 compiler, cannot parse generic declarations such as `Map<...>`).
+不做：流式/SAX、注释与尾逗号、JSON Schema、JSON Pointer/Patch、美化/排序、任意用户类型编码、UTF-8 规范化、BOM 剥离、数组路径下标、C ABI 承诺。
+
+## 安装
 
 ```sh
-# in the consuming project
-ct get /path/to/ct-json      # writes vendor/json/ and ct.lock
-ct install                   # emits: ct build -I vendor/json <unit>.ct -o build
+# 在消费方工程内
+ct get /path/to/ct-json      # 写入 vendor/json/ 与 ct.lock
+ct install                   # 打印 ct build -I vendor/json <unit>.ct -o build
 ```
 
 ```ct
-import json::src::json;      // `namespace = json` strips the first segment
+import json::src::json;      // namespace = json 剥掉首段；单元在 src/ 下
 ```
 
-The red→green fixture for this is [`test/pkg/consumer.ct`](test/pkg/consumer.ct).
+要求 `ct >= 0.53.0`（`ct.pkg#requires` 与 `src/json.h.ct` 的 `//@ct-requires` 一致）。`ctc`（L0）不支持泛型声明，不是受支持路径。
 
-A single CT file that validates JSON, exposes a read-only view over the caller's
-text, and serializes values back out. It allocates nothing, owns nothing, and
-does not need a DOM: a parsed document is just the input bytes plus the offset of
-the first error, and every lookup re-scans the slice it needs.
+## 快速开始
 
-```sh
-ct-ast json.ct -o /tmp/json.c
-cc -Wall -Wextra -std=c99 /tmp/json.c -o /tmp/json && /tmp/json
+解码、读、写、编码的最小形态：
+
+```ct
+JsonRef doc = { .p = 0 };
+if (json_decode(text, len, &doc) != JSON_OK) return 1;
+
+Str key = str_from("server");
+JsonRef server = json_member(doc, key);
+key.release();
+
+long long port = 0;
+JsonRef p = server.get("port");          // 或 server["port"]
+if (json_as_int(p, &port) == JSON_OK) { /* ... */ }
+
+JsonRef fresh = { .p = 0 };
+Str path = str_from("a.b.c");
+json_decode("7", 1, &fresh);
+if (json_set(doc, path, fresh) != JSON_OK) { /* ... */ }
+path.release();
+
+char *out = json_encode(doc);
+free(out);
+json_free(doc);
 ```
 
-[`json.expected.out`](json.expected.out) is the golden output: build `json.ct`
-with `ct-ast`, run it and diff the two. The program is
-both the demo (`-- demo --`) and the conformance suite (`ok` / `FAIL` lines, a
-non-zero exit on the first failing check).
+完整可运行文件在 [docs/snippets/](docs/snippets/README.md)：`read_str.ct`、`write_str.ct`、`chain.ct`、`chain3.ct`、`numeric_index.ct`、`cross_unit.ct`。
 
-## What is in the file
+## API 索引
 
-| part | contents |
+每个 `pub` 符号一行；完整语义见规范 §三。
+
+| 符号 | 作用 |
 | --- | --- |
-| reader | `JsonDoc` + `trait Json`: `parse`, `root`, `kind`, `count`, `member`, `at`, `as_*`, `offset_of`, `len_of`, `emit`, error accessors |
-| writer | `JsonOut` + `trait JsonWrite`: `begin`, `object`, `array`, `end`, `key`, `string`, `integer`, `real`, `boolean`, `null`, `finish`, `length`, `error` |
-| view | `JsonView { start, len }`, a byte range in the text the caller passed to `parse` |
-| demo/tests | `main` drives the sections `demo`, `reader`, `writer`, `errors` |
+| `json_decode(text, len, out)` | 宽松解码；不校验 UTF-8 |
+| `json_decode_strict(text, len, out)` | 严格 UTF-8；非法序列报 `JSON_ERR_UTF8` |
+| `json_encode(root)` | 编码；调用方 `free`；失败返回 NULL |
+| `json_set(root, path, value)` | 点分对象路径写入；缺失中间对象自动创建 |
+| `json_retain` / `json_release` / `json_free` | 引用计数 |
+| `json_tag` / `json_is_null` | 类型判别 |
+| `json_as_bool` / `json_as_int` / `json_as_double` / `json_as_str` | 显式取值 |
+| `json_obj_len` / `json_arr_len` / `json_member` / `json_obj_key_at` | 容器读取 |
+| `v.get(k)` / `v.set(k, x)` / `v.has(k)` | 字符串键下标协议 |
+| `v.get_idx(i)` / `v.set_idx(i, x)` / `v.push(x)` | 数组访问与追加 |
+| `v.set_str` / `v.set_int` / `v.set_double` / `v.set_bool` / `v.set_null` / `v.remove` | 写入辅助 |
+| `json_last_error` / `json_error_offset` / `json_error_line` / `json_error_column` | 最近一次解码错误与位置 |
+| `json_message(code)` | 错误码文案（静态，不释放） |
 
-All generated C symbols are file-local (`static`); the file is meant to be copied
-into a program or imported as one unit, not linked as a library.
+## 限制
 
-## Reading
+- **深度固定 64 层**，没有调高入口；65 层返回 `JSON_ERR_DEPTH`。
+- **数字双轨**：解析来的数字保留原文；程序写入分 int64 / double；非有限实数拒绝。
+- **错误位置按字节**：`json_error_line/column` 是 1-based，列按字节计。
+- **失败不返回部分树**；`json_free` 后才释放整棵树。
+- **BOM 一律拒绝**，不自动剥离；不校验 UTF-8（除非用 strict 入口）。
+- **路径写入只支持对象键**：不支持数组段、转义点号；键含 `.` 请用 `set`。
+- **没有流式解析、美化、键排序、JSON Pointer/Patch**。
 
-```c
-struct JsonDoc doc;
-struct JsonView root;
-struct JsonView v;
-char name[32];
-long long stars;
+## 版本与兼容
 
-if (!doc.parse(text, len)) {
-    printf("%s at %d:%d\n", json_message(doc.error()),
-            doc.error_line(), doc.error_column());
-    return;
-}
-root = doc.root();
-v = doc.member(&root, "name");
-doc.as_string(&v, name, sizeof name);
-v = doc.member(&root, "stars");
-doc.as_int(&v, &stars);
-```
+产品版本见 `ct.pkg#version`，按 phase 收口递增 MINOR，按 fix 递增 PATCH；phase 收口打 annotated tag。0.x 期间 API 可能变化，不承诺 C ABI。
 
-`parse` validates the whole document once. A `JsonView` is only a slice, so a
-view stays valid as long as the text does; there are no handles, no free, no
-lifetime beyond that. `member` keeps the **last** duplicate key, `at` takes a
-zero-based index, and both return a `MISSING` view when nothing matches.
+## 许可
 
-`as_string` decodes `\"`, `\\`, `\/`, `\b`, `\f`, `\n`, `\r`, `\t`, `\uXXXX` and
-surrogate pairs into UTF-8. It returns the decoded length and follows `snprintf`
-semantics: a short buffer is truncated and NUL-terminated, but the return value is
-always the length that would be needed. `cap = 0` therefore measures.
+MIT。见 [LICENSE](LICENSE)。静态链入闭源程序只需保留版权与许可声明。
 
-`as_int` accepts only a plain integer literal in `int64` range: `1.0` and `1e3`
-are rejected with `JSON_READ_INTEGER`, out-of-range values with
-`JSON_READ_RANGE`. `as_double` accepts any number token.
+## English summary
 
-## Writing
-
-```c
-struct JsonOut out;
-char buf[256];
-
-out.begin(buf, sizeof buf);
-out.object();
-out.key("name");
-out.string("ct");
-out.key("stars");
-out.integer(42);
-out.end();
-if (out.finish() < 0) { /* out.error() */ }
-```
-
-`JsonOut` appends into a caller buffer and keeps its nesting stack (depth 64) in
-the struct. `begin(buf, 0)` measures without writing; `finish` NUL-terminates and
-returns the required length, or `-1` on a structural error (`JSON_EMIT_STATE`),
-too-deep nesting (`JSON_EMIT_DEPTH`) or a non-finite real (`JSON_EMIT_FINITE`).
-Strings are escaped, including control bytes as `\u00XX`; `real` prints with
-`%.17g`. `emit` copies one view's bytes into a `JsonOut` so a parsed subtree can
-be embedded or round-tripped.
-
-## Limits (superseded 0.1.0 view implementation — see Status)
-
-- **Zero allocation.** No `malloc`, no hidden ownership; nesting depth and output
-  size are the only resource limits (64 containers by default; set
-  `doc.depth_limit` before `parse` to change it).
-- **Lazy lookups cost O(n).** Each `member`/`at`/`count` re-scans its container.
-  Fine for configuration-sized documents; not for hot loops over large arrays.
-- **Errors are one code plus a byte offset**, with 1-based line and column
-  computed on demand (column counts bytes, tabs count 1, `\n` starts a new line).
-- **Numbers.** Integers are exact within `int64`. Reals are converted by hand
-  (no `strtod`, so no locale dependency) from at most 19 significant digits and a
-  clamped exponent; the last unit in the last place may differ from a correctly
-  rounded conversion. Use `offset_of`/`len_of` for the raw token when exact
-  decimal text matters.
-- **Strings** are decoded to UTF-8, but the input is not validated as UTF-8: bytes
-  above `0x7F` are passed through unchanged. Lone surrogates and unknown escapes
-  are rejected; unescaped control bytes `< 0x20` are rejected.
-- **No mutation, no DOM.** Values cannot be edited in place; build new output with
-  `JsonOut` and `emit`. There is no pretty printer.
-- **Duplicate keys are not an error**; `member` returns the last one.
-
-## When to use it
-
-Use it for configuration files, small protocol payloads, logs and test fixtures
-where the whole text is already in memory and lookups are few. Use something else
-when you need random access over large arrays, mutation (decided, not implemented
-yet — see Status), streaming of huge documents, schema validation, exact decimal
-arithmetic, or pretty printing.
-
-## 中文
-
-> **状态（2026-11-15，0.1.1）：** 已决定的公开范围是**读 + 写**，数据模型为树、子对象可共享，
-> 生命周期用引用计数管理（`json_retain` / `json_release` 公开）。数字双轨：解析来的
-> 字面量原样回吐，程序写入的值分 int64 / double。内存里允许有环，encode 期拒绝。
-> 见 [ADR-0001](docs/adr/0001-tree-data-model.md)、[ADR-0002](docs/adr/0002-mutable-scope.md)、
-> [ADR-0003](docs/adr/0003-reference-sharing.md)、[ADR-0004](docs/adr/0004-number-representation.md)、
-> [ADR-0005](docs/adr/0005-cycle-handling.md)、[ADR-0006](docs/adr/0006-public-refcount.md)。
-> 访问用单层字符串下标（`v["server"]`，[ADR-0007](docs/adr/0007-js-style-access.md)）；
-> 数字下标用 `get_idx(i)`，0.1.0 不支持 `v[0]`。键为 `Str`，插入时深拷贝；容器负责释放
-> 元素。树模型与写入面已实现于 [`src/json.h.ct`](src/json.h.ct)（0.1.1 为可用性补丁：
-> 包可安装、可 import，不加新特性）。下文的零分配只读视图是 0.1.0 旧文件，已被取代；
-> 本文只描述「已有」，不描述「已决定」。
->
-> 链式读在 CT **v0.62.0** 起可用：`doc["a"]["b"]["c"]`、`doc["server"].has(k)`、
-> `doc.get("a").get("b")` 在声明初始化与赋值位置都能编译。链式结果仍不能作函数实参或
-> 取字段，三级写链 `doc["a"]["b"]["c"] = v` 仍被拒绝；这两种情况先落局部变量。
-> 数字下标仍用 `get_idx(i)`（`v[0]` 不是数组访问）。
-
-一个 CT 文件：校验 JSON、在调用方文本上暴露只读视图、再把值序列化回去。全程
-不分配内存、不持有所有权、不建 DOM。解析后的“文档”就是原始字节加上第一个错误的
-偏移；每次查找重新扫描需要的那一段。
-
-构建与运行：
-
-```sh
-ct-ast json.ct -o /tmp/json.c
-cc -Wall -Wextra -std=c99 /tmp/json.c -o /tmp/json && /tmp/json
-```
-
-[`json.expected.out`](json.expected.out) 是基准输出：用 `ct-ast` 构建
-`json.ct`，运行后与它比对。程序同时是演示（`-- demo --`）和
-一致性测试（`ok` / `FAIL` 行，失败时以非零退出）。
-
-### 文件里有什么
-
-| 部分 | 内容 |
-| --- | --- |
-| 读取 | `JsonDoc` + `trait Json`：`parse`、`root`、`kind`、`count`、`member`、`at`、`as_*`、`offset_of`、`len_of`、`emit` 及错误访问器 |
-| 写入 | `JsonOut` + `trait JsonWrite`：`begin`、`object`、`array`、`end`、`key`、`string`、`integer`、`real`、`boolean`、`null`、`finish`、`length`、`error` |
-| 视图 | `JsonView { start, len }`，是传给 `parse` 的文本里的一个字节区间 |
-| 演示/测试 | `main` 驱动 `demo`、`reader`、`writer`、`errors` 四段 |
-
-生成的 C 符号全部是文件内 `static` 的；这个文件应当被复制进程序或作为一个单元
-导入，而不是当作可链接的库。
-
-### 读取
-
-```c
-struct JsonDoc doc;
-struct JsonView root;
-struct JsonView v;
-char name[32];
-long long stars;
-
-if (!doc.parse(text, len)) {
-    printf("%s at %d:%d\n", json_message(doc.error()),
-            doc.error_line(), doc.error_column());
-    return;
-}
-root = doc.root();
-v = doc.member(&root, "name");
-doc.as_string(&v, name, sizeof name);
-v = doc.member(&root, "stars");
-doc.as_int(&v, &stars);
-```
-
-`parse` 一次校验整个文档。`JsonView` 只是一个切片，所以只要文本还活着，视图就
-有效；没有句柄、没有 free、没有额外生命周期。`member` 对重复键保留**最后一个**；
-`at` 用从 0 开始的下标；找不到时都返回 `MISSING` 视图。
-
-`as_string` 会把 `\"`、`\\`、`\/`、`\b`、`\f`、`\n`、`\r`、`\t`、`\uXXXX`
-以及代理对解码成 UTF-8。它返回解码后的长度，语义同 `snprintf`：缓冲区不够就截断
-并补 NUL，但返回值始终是所需长度，所以 `cap = 0` 可以用来量长度。
-
-`as_int` 只接受纯整数字面量且必须在 `int64` 范围内：`1.0`、`1e3` 报
-`JSON_READ_INTEGER`，越界报 `JSON_READ_RANGE`。`as_double` 接受任意数字词法。
-
-### 写入
-
-```c
-struct JsonOut out;
-char buf[256];
-
-out.begin(buf, sizeof buf);
-out.object();
-out.key("name");
-out.string("ct");
-out.key("stars");
-out.integer(42);
-out.end();
-if (out.finish() < 0) { /* out.error() */ }
-```
-
-`JsonOut` 追加到调用方缓冲区，嵌套栈（深度 64）就放在结构体里。
-`begin(buf, 0)` 只量长度不写；`finish` 补 NUL 并返回所需长度，结构错误
-（`JSON_EMIT_STATE`）、嵌套过深（`JSON_EMIT_DEPTH`）、非有限实数
-（`JSON_EMIT_FINITE`）返回 `-1`。字符串会被转义，控制字节写成 `\u00XX`；
-`real` 用 `%.17g` 输出。`emit` 把一个视图的字节复制进 `JsonOut`，因此解析出的
-子树可以被嵌入或原样往返。
-
-### 边界与限制（已废止的 0.1.0 视图实现，见上方状态）
-
-- **零分配。** 没有 `malloc`，没有隐藏所有权；唯一的资源限制是嵌套深度（默认
-  64 层容器，可在 `parse` 前改 `doc.depth_limit`）和输出长度。
-- **惰性查找是 O(n)。** 每次 `member`/`at`/`count` 都重新扫描所在容器。适合
-  配置大小的文档，不适合在大数组上热循环。
-- **错误模型是一个错误码加一个字节偏移**，行列按需计算（从 1 开始；列按字节，
-  制表符算 1，遇 `\n` 换行）。
-- **数字精度。** 整数在 `int64` 内精确。实数用手写十进制转换（不用 `strtod`，
-  因而与 locale 无关），最多取 19 位有效数字并对指数做截断；最后一位可能与
-  正确舍入的结果不同。需要精确十进制原文时用 `offset_of`/`len_of` 取原词。
-- **字符串**会解码成 UTF-8，但不校验输入是否为合法 UTF-8：`0x7F` 以上的字节
-  原样透传。孤立代理项和未知转义会被拒绝；字符串内未转义且小于 `0x20` 的控制
-  字节也会被拒绝。
-- **没有可变 API，没有 DOM。** 不能原地改值；要改就用 `JsonOut` 重新构造并
-  `emit`。没有美化输出。
-- **重复键不算错误**；`member` 返回最后一个。
-
-### 什么时候该用它
-
-适合整段文本已经在内存里、查找次数不多的场景：配置文件、小型协议报文、日志、
-测试夹具。需要大数组随机访问、原地修改（已决定、未实现，见上方状态）、超大文档
-流式处理、schema 校验、精确十进制运算或格式化输出时，应换别的方案。
+`ct-json` is an external CT package that decodes in-memory JSON into a reference-counted tree and encodes it back. Tree-only public model; 64-level hard depth cap; strict/lenient UTF-8 entries; error codes plus byte offset/line/column; `json_set` path writes. MIT licensed. See the Chinese sections above and the spec under `docs/spec/`.
