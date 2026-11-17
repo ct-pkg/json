@@ -14,7 +14,7 @@
 | --- | --- | --- |
 | g0 | 可运行 | 规范块、实例化 8 行、session-map、`ct pkg check`、版本落点 |
 | g1 | 可运行 | 需求编号、无待定项、phase 卡十项与冻结摘要（无卡时只报 note） |
-| g2 | 可运行 | 验收映射 38 条 R-*、38 个 ACC、28 个公开符号；负例删行/删公开符号即红 |
+| g2 | 可运行 | 验收映射 39 条 R-*、39 个 ACC、34 个公开符号；负例删行/删公开符号即红 |
 | g3 | 可运行 | J1 往返用例 + `json.expected.out` + 零警告 |
 | g4 | 可运行 | doc-size / snippets / anchors / readme / applies-to / version / tag |
 | g5 | 可运行 | 22 个任务红证登记、baseline 祖先、门禁负例覆盖 |

@@ -39,7 +39,7 @@ $ bash tools/check.sh all
 === g0
 ok g0 (block, 8 rows, routing, deviations, session map, pkg check, version 0.6.0)
 === g1
-ok g1 (39 requirement ids, no TBD, 6 phase card(s))
+ok g1 (39 requirement ids, no pending markers, 6 phase card(s))
 === g2
 ok g2 (39 R rows, 39 ACC ids, 34 public symbols)
 === g3

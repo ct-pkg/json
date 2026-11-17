@@ -321,11 +321,11 @@ AI_ENGINEERING_SPEC=<主规范路径> ...                          # 覆盖默�
 | --- | --- |
 | 对话清单 | 需求池 / 技术池 / 评审三类常驻对话；phase 对话按 9.3 命名：`[ct-json] J<n> · <目标一句话>` |
 | 任务-对话映射 | [docs/session-map.md](docs/session-map.md) |
-| 门禁入口 | `bash tools/check.sh <g0…g9\|all>`（g0/g1/g3/g6/g7/g8/g9 可运行；g2/g4/g5 退出 2，见 [docs/status.md](docs/status.md)） |
+| 门禁入口 | `bash tools/check.sh <g0…g9\|all>`（g0–g9 全部可运行；`all` 另含 `surface`，见 [docs/status.md](docs/status.md)） |
 | 文档 snippet | [docs/snippets/](docs/snippets/README.md)（首个可运行示例已收口） |
-| Issue 台账 | [issues/](issues/)（前缀 `JSON-<n>`，当前 4 条） |
+| Issue 台账 | [issues/](issues/)（前缀 `JSON-<n>`，当前 14 条） |
 | 决策记录 | [docs/decisions/](docs/decisions/README.md)（规范 `D-<n>`，唯一新增入口）；历史：[DECISIONS.md](DECISIONS.md)、[docs/adr/](docs/adr/) 只读；需求层裁定见 [docs/requirements.md](docs/requirements.md) |
-| 版本落点 | `ct.pkg#version`（README 尚无版本行，收口时需要时补） |
+| 版本落点 | `ct.pkg#version`；`README.md` 的「版本」行；`README.md`、`docs/spec/ct-json-0.1.0.md`、`docs/snippets/README.md` 的 `applies-to` |
 | 偏离项 | 无（见 0.3） |
 
 ### 0.2 话术路由

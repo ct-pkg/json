@@ -212,7 +212,7 @@ g1)
         note "no phase cards yet (docs/phases/PH-*/card.md)"
     fi
 
-    printf 'ok g1 (%d requirement ids, no TBD, %d phase card(s))\n' "$n_req" "$cards"
+    printf 'ok g1 (%d requirement ids, no pending markers, %d phase card(s))\n' "$n_req" "$cards"
     ;;
 
 g2)

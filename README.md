@@ -3,7 +3,7 @@
 
 `ct-json` 是 CT 的外部包：把一段内存里的 JSON 字节严格解码为可读写的树，再把树编码回 JSON 字节。零分配只读视图是 0.1.0 的历史实现，已废止；当前唯一公开模型是树。
 
-- 版本：`0.5.0`（以 `ct.pkg#version` 为准）
+- 版本：`0.6.0`（以 `ct.pkg#version` 为准）
 - 规范：[docs/spec/ct-json-0.1.0.md](docs/spec/ct-json-0.1.0.md)（公开 API 与模型）
 - 验收：[docs/acceptance-map.md](docs/acceptance-map.md)（R-* → ACC-*）
 - 变更：[CHANGELOG.md](CHANGELOG.md)
@@ -63,6 +63,10 @@ json_free(doc);
 
 | 符号 | 作用 |
 | --- | --- |
+| `JsonTag` / `JsonCode` | 类型与错误码枚举 |
+| `JsonRef` | 8 字节引用计数句柄 |
+| `JsonNode` / `JsonValue` | 节点与具名 union |
+| `JsonObj` / `JsonArr` | 对象与数组节点 |
 | `json_decode(text, len, out)` | 宽松解码；不校验 UTF-8 |
 | `json_decode_strict(text, len, out)` | 严格 UTF-8；非法序列报 `JSON_ERR_UTF8` |
 | `json_encode(root)` | 编码；调用方 `free`；失败返回 NULL |
@@ -94,6 +98,11 @@ json_free(doc);
 ## 许可
 
 MIT。见 [LICENSE](LICENSE)。静态链入闭源程序只需保留版权与许可声明。
+
+## License
+
+MIT. See [LICENSE](LICENSE). Linking into a closed-source program only requires
+keeping the copyright and permission notice.
 
 ## English summary
 
