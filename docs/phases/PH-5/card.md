@@ -4,7 +4,7 @@
 - phase 目录：`docs/phases/PH-5/`
 - version-minor：5
 - 规范版本：1.15.0
-- 状态：in-progress
+- 状态：closed
 - criteria-sha256：10e4a30dfadffa8a386dd89271739dc9771e8f9b279f3cf2a7672ca816749426
 - tasks-sha256：77d4f9964d7714a30ee7ab5b7271904b1ad961622ce6e18066d1444e60d6e666
 
@@ -98,3 +98,13 @@
 | 4 | 打 annotated tag `v0.5.0` 并推送（V-7） | `git cat-file -t v0.5.0` |
 | 5 | 写收口回顾（`lessons` 带 `landing`） | `reviews/closeout-PH-5.md` |
 | 6 | 更新 `docs/session-map.md` 与本目录清单 | 同上 |
+
+## 10. 收口记录（2026-11-17）
+
+- E-P5-1…E-P5-4 逐条通过，原始输出见 [reviews/closeout-PH-5.md](../../../reviews/closeout-PH-5.md)。
+- 首轮 VERIFY 发现两个阻断项：CT v0.63.x 的 2^63 字面量 codegen（JSON-13，`deaa657` 绕行）
+  与每对象 32B Map 头泄漏（JSON-14，`de87c01`）；终验复跑通过。
+- 版本四项：`ct.pkg#version = 0.5.0`，MINOR=5=PH-5，PATCH=0（phase 内修复并入本版）。
+- JSON-9/11/13/14 本 phase 收口；JSON-3/5/6 语言层。
+- tag：`v0.5.0`（annotated），随收口提交创建并推送（6.7 V-7）。
+- 未覆盖：g4/g5 归 PH-6；LSan 平台缺口，泄漏用 macOS `leaks` 补测。

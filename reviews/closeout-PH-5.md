@@ -115,6 +115,13 @@ Process: 0 leaks for 0 total leaked bytes.
 
 处置：JSON-13（`deaa657`）、JSON-14（`de87c01`）；文档与证据按发现修正（`b68fbaa`）。
 
-### 8.2 终验
+### 8.2 终验（基线 `767549d`）：通过
 
-（终验签字待填）
+```text
+VERIFY: 通过 | 复核人: verify-ph5 | 日期: 2026-11-17 | 基线: 767549d
+```
+
+- 干净 `git archive` 下 g1/g2/g3/g6/g7 全绿；g2 为 39 R / 39 ACC / 34 symbols。
+- `leaks`：j5 / j1 / j3 均 0；ASan j5 0 命中。
+- 文档项：卡 §0 已登记 34、§6 父提交 `4474ad0`；CT 版本 `v0.63.2`；R-C-03 行号 `346-364`。
+- 收口提交与 tag 的 g8 校验见 `docs/evidence/release-PH-5.md`。

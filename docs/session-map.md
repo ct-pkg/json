@@ -18,3 +18,4 @@
 | 2026-11-17 | 开卡 PH-4：严格 UTF-8、实数溢出、BOM、深度/性能复核 | [PH-4 卡](phases/PH-4/card.md) |
 | 2026-11-17 | PH-4 收口：strict UTF-8、1e999 溢出、BOM、深度/性能复核；tag `v0.4.0` | [closeout-PH-4.md](../reviews/closeout-PH-4.md)、[decode-bounds.md](evidence/decode-bounds.md) |
 | 2026-11-17 | 开卡 PH-5：NaN 编码、错误偏移/行列、文案契约、失败清理 | [PH-5 卡](phases/PH-5/card.md) |
+| 2026-11-17 | PH-5 收口：NaN、错误偏移/行列、json_message、JSON-13/14；tag `v0.5.0` | [closeout-PH-5.md](../reviews/closeout-PH-5.md)、[error-contract.md](evidence/error-contract.md) |
