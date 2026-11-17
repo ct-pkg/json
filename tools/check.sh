@@ -541,7 +541,12 @@ g8)
             old="$(git -C "$pkg" show "$c^:ct.pkg" 2>/dev/null | sed -n 's/^version *= *\([0-9][0-9.]*\).*$/\1/p' | head -n 1)"
             new="$(git -C "$pkg" show "$c:ct.pkg" 2>/dev/null | sed -n 's/^version *= *\([0-9][0-9.]*\).*$/\1/p' | head -n 1)"
             [ -n "$old" ] && [ -n "$new" ] || { printf 'commit %s changed ct.pkg but version unreadable\n' "$c" >&2; bad=1; continue; }
-            [ "$old" = "$new" ] && { printf 'commit %s touches ct.pkg without a version move (V-5)\n' "$c" >&2; bad=1; continue; }
+            # Comments and blank lines do not change the manifest contract. Compare
+            # the semantic key=value lines; only a real manifest change needs a
+            # version move (V-5).
+            sem_old="$(git -C "$pkg" show "$c^:ct.pkg" 2>/dev/null | sed -e 's/#.*//' -e 's/[[:space:]]*$//' | grep -v '^$' || true)"
+            sem_new="$(git -C "$pkg" show "$c:ct.pkg" 2>/dev/null | sed -e 's/#.*//' -e 's/[[:space:]]*$//' | grep -v '^$' || true)"
+            [ "$sem_old" = "$sem_new" ] && continue
             o_major="${old%%.*}"; o_rest="${old#*.}"; o_minor="${o_rest%%.*}"; o_patch="${o_rest#*.}"
             n_major="${new%%.*}"; n_rest="${new#*.}"; n_minor="${n_rest%%.*}"; n_patch="${n_rest#*.}"
             subj="$(git -C "$pkg" log -1 --format=%s "$c")"

@@ -186,6 +186,14 @@ case " $want " in
     git -C "$d" -c user.name=neg -c user.email=neg@example.invalid \
         commit -qam 'chore(release): PH-2 收口（v0.2.0）'
     expect_red "g8 minor without closed card" g8 "$d"
+
+    # A semantic manifest change (not just comments) still needs a version move.
+    d="$tmp/g8-sem"
+    git clone -q "$pkg" "$d"
+    sed -i '' 's/^requires = ct >= 0.62.0$/requires = ct >= 0.61.0/' "$d/ct.pkg"
+    git -C "$d" -c user.name=neg -c user.email=neg@example.invalid \
+        commit -qam 'chore: change requires without a version move'
+    expect_red "g8 manifest change without version" g8 "$d"
     ;;
 esac
 
