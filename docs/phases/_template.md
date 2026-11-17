@@ -13,7 +13,7 @@
 | 项 | 值 |
 | --- | --- |
 | 编号 | PH-<n>（与目录 `docs/phases/PH-<n>/` 一致） |
-| 对应 roadmap | [roadmap](../../planning/roadmap.md) |
+| 对应 roadmap | [roadmap](../planning/roadmap.md) |
 | 需求 / issue | <R-* / JSON-*；没有写「无」> |
 | 版本 | 收口时 `ct.pkg#version` 的 MINOR 等于 `version-minor`；PATCH 由 fix 数决定，不写进卡 |
 | 不为 | <本 phase 明确不碰的范围；语言侧缺口只登记依赖，不绕过、不降级> |

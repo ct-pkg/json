@@ -43,7 +43,7 @@ expect_red() {
     fi
 }
 
-want="${*:-g0 g1 g2 g6 g7 g8}"
+want="${*:-g0 g1 g2 g4 g6 g7 g8}"
 
 case " $want " in
 *' g0 '*)
@@ -89,6 +89,14 @@ case " $want " in
     d="$tmp/g2-sym"; export_tree "$d"
     sed -i '' '/^| `json_decode` |/d' "$d/docs/acceptance-map.md"
     expect_red "g2 public symbol unmapped" g2 "$d"
+    ;;
+esac
+
+case " $want " in
+*' g4 '*)
+    d="$tmp/g4"; export_tree "$d"
+    awk 'BEGIN { for (i = 0; i < 301; i++) print "x" }' > "$d/docs/too-long.md"
+    expect_red "g4 oversized document" g4 "$d"
     ;;
 esac
 

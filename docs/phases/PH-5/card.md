@@ -13,7 +13,7 @@
 | 项 | 值 |
 | --- | --- |
 | 编号 | PH-5（与目录 `docs/phases/PH-5/` 一致） |
-| 对应 roadmap | [roadmap](../planning/roadmap.md) 的 PH-5（编码边界与错误契约） |
+| 对应 roadmap | [roadmap](../../planning/roadmap.md) 的 PH-5（编码边界与错误契约） |
 | 需求 / issue | R-B-03（JSON-9）、R-C-01（JSON-11）、R-C-03、R-C-05；回归 R-B-04/07 |
 | 版本 | 收口时 `ct.pkg#version` 为 `0.5.0`（MINOR=5，PATCH=0） |
 | 不为 | 不做 JsonOut/截断码（D-006）；不做 OOM 故障注入；不改错误码已有数值 |

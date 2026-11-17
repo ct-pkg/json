@@ -13,7 +13,7 @@
 | 项 | 值 |
 | --- | --- |
 | 编号 | PH-3（与目录 `docs/phases/PH-3/` 一致） |
-| 对应 roadmap | [roadmap](../planning/roadmap.md) 的 PH-3（J3 写能力） |
+| 对应 roadmap | [roadmap](../../planning/roadmap.md) 的 PH-3（J3 写能力） |
 | 需求 / issue | 新增 `R-D-09`（路径写入）；复核 R-D-08、R-D-03 |
 | 版本 | 收口时 `ct.pkg#version` 为 `0.3.0`（MINOR=3，PATCH=0） |
 | 不为 | 不做三级写链 `a["b"]["c"] = x`（JSON-6 语言层）；不做数组路径下标；不做删除/移动 |

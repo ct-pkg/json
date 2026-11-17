@@ -304,7 +304,93 @@ g3)
     ;;
 
 g4)
-    skip "文档 snippet / 锚点 / 300 行检查尚未接入；已知 docs/spec/ct-json-0.1.0.md 366 行待拆分（backlog #9）"
+    ver="$(sed -n 's/^version *= *\([0-9][0-9.]*\).*$/\1/p' "$pkg/ct.pkg" | head -n 1)"
+    [ -n "$ver" ] || fail "ct.pkg has no version"
+
+    bash "$pkg/tools/check-doc-size.sh" >/dev/null 2>&1 || {
+        bash "$pkg/tools/check-doc-size.sh" >&2
+        fail "doc-size: single document over 300 lines"
+    }
+
+    n_run=0
+    for f in "$pkg"/docs/snippets/*.ct; do
+        [ -f "$f" ] || continue
+        out="/tmp/ctjson_g4_$(basename "$f" .ct)"
+        ct_build "$f" -I "$pkg/src" -o "$out" >/tmp/ctjson_g4_build.log 2>&1 \
+            || { cat /tmp/ctjson_g4_build.log >&2; fail "snippet does not build: $f"; }
+        "$out" >/dev/null 2>&1 || fail "snippet does not run: $f"
+        n_run=$((n_run + 1))
+    done
+    [ "$n_run" -ge 1 ] || fail "no runnable snippets under docs/snippets/"
+
+    n_fail=0
+    for f in "$pkg"/docs/snippets/fail/*.ct; do
+        [ -f "$f" ] || continue
+        if ct_build "$f" -I "$pkg/src" -I "$pkg/docs/snippets/fail/private_unit" \
+            -o /tmp/ctjson_g4_fail >/tmp/ctjson_g4_fail.log 2>&1; then
+            fail "a fail/ sample compiled: $f"
+        fi
+        n_fail=$((n_fail + 1))
+    done
+
+    link_bad=0
+    check_links() {
+        lf="$1"
+        ldir="$(dirname "$lf")"
+        while IFS= read -r tgt; do
+            case "$tgt" in
+                http:*|https:*|mailto:*|'#'*|'') continue ;;
+            esac
+            t="${tgt%%#*}"
+            t="${t#<}"
+            t="${t%>}"
+            [ -n "$t" ] || continue
+            case "$t" in
+                /*) full="$t" ;;
+                *) full="$ldir/$t" ;;
+            esac
+            if [ ! -e "$full" ]; then
+                printf 'dead link in %s: %s\n' "$lf" "$t" >&2
+                link_bad=1
+            fi
+        done < <(awk '
+            /^[[:space:]]*```/ { code = !code; next }
+            code { next }
+            {
+                s = $0
+                while (match(s, /\]\([^)]*\)/)) {
+                    print substr(s, RSTART + 2, RLENGTH - 3)
+                    s = substr(s, RSTART + RLENGTH)
+                }
+            }
+        ' "$lf")
+    }
+    check_links "$pkg/README.md"
+    while IFS= read -r -d '' f; do
+        check_links "$f"
+    done < <(find "$pkg/docs" -name '*.md' -print0)
+    [ "$link_bad" -eq 0 ] || fail "dead relative links"
+
+    for h in '## 定位与边界' '## 安装' '## 快速开始' '## API 索引' '## 限制' '## 版本与兼容' '## 许可'; do
+        grep -qxF "$h" "$pkg/README.md" || fail "README is missing section: $h"
+    done
+
+    for f in README.md docs/spec/ct-json-0.1.0.md docs/snippets/README.md; do
+        grep -q "applies-to: $ver" "$pkg/$f" || fail "$f: applies-to does not name $ver"
+    done
+
+    cl="$(grep -m 1 -E '^## [0-9]+\.[0-9]+\.[0-9]+' "$pkg/CHANGELOG.md" \
+        | sed -E 's/^## ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')"
+    [ "$cl" = "$ver" ] || fail "CHANGELOG latest entry ($cl) != ct.pkg version ($ver)"
+    if git -C "$pkg" tag -l "v$ver" | grep -q .; then
+        [ "$(git -C "$pkg" cat-file -t "v$ver" 2>/dev/null)" = "tag" ] \
+            || fail "v$ver is not an annotated tag"
+        git -C "$pkg" merge-base --is-ancestor "$(git -C "$pkg" rev-parse "v$ver^{commit}")" HEAD \
+            || fail "v$ver is not an ancestor of HEAD"
+    fi
+
+    printf 'ok g4 (%s snippets, %s fail samples, anchors, readme, version %s)\n' \
+        "$n_run" "$n_fail" "$ver"
     ;;
 
 g5)

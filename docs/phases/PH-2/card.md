@@ -13,7 +13,7 @@
 | 项 | 值 |
 | --- | --- |
 | 编号 | PH-2（与目录 `docs/phases/PH-2/` 一致） |
-| 对应 roadmap | [roadmap](../planning/roadmap.md) 的 PH-2（需求基线与验收映射） |
+| 对应 roadmap | [roadmap](../../planning/roadmap.md) 的 PH-2（需求基线与验收映射） |
 | 需求 / issue | 全部 `R-*`（38 条）；缺口新开 `JSON-9`、`JSON-10`、`JSON-11` |
 | 版本 | 收口时 `ct.pkg#version` 为 `0.2.0`（MINOR=2，PATCH=0） |
 | 不为 | 不实现 PH-3…PH-6 的功能；不改 `src/` 的行为；不把「需变更」写成「已满足」 |

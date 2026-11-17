@@ -13,7 +13,7 @@
 | 项 | 值 |
 | --- | --- |
 | 编号 | PH-6（与目录 `docs/phases/PH-6/` 一致） |
-| 对应 roadmap | [roadmap](../planning/roadmap.md) 的 PH-6（交付） |
+| 对应 roadmap | [roadmap](../../planning/roadmap.md) 的 PH-6（交付） |
 | 需求 / issue | R-E-02、R-E-03、R-E-04、R-E-05、R-E-06；R-E-01 复核 |
 | 版本 | 收口时 `ct.pkg#version` 为 `0.6.0`（MINOR=6，PATCH=0） |
 | 不为 | 不做包根迁移（D-003）；不做 C ABI 承诺；不改主规范 |

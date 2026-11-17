@@ -13,7 +13,7 @@
 | 项 | 值 |
 | --- | --- |
 | 编号 | PH-1（与目录 `docs/phases/PH-1/` 一致） |
-| 对应 roadmap | [roadmap](../planning/roadmap.md) 的 PH-1（别名 J1 收口） |
+| 对应 roadmap | [roadmap](../../planning/roadmap.md) 的 PH-1（别名 J1 收口） |
 | 需求 / issue | `JSON-1`、`JSON-2`；残余限制新开 `JSON-5`、`JSON-6` |
 | 版本 | 收口时 `ct.pkg#version` 为 `0.1.1`（MINOR=1；PATCH=1 来自 JSON-4 的一次 fix） |
 | 不为 | 不改 `src/`；不实现写链、数字下标、属性访问、J4 错误对象；不降级任何需求 |

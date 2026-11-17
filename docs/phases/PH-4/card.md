@@ -13,7 +13,7 @@
 | 项 | 值 |
 | --- | --- |
 | 编号 | PH-4（与目录 `docs/phases/PH-4/` 一致） |
-| 对应 roadmap | [roadmap](../planning/roadmap.md) 的 PH-4（解码边界） |
+| 对应 roadmap | [roadmap](../../planning/roadmap.md) 的 PH-4（解码边界） |
 | 需求 / issue | R-A-08、R-A-09（JSON-10）、R-A-10、R-A-11、R-A-12；引用 D-002、D-005 |
 | 版本 | 收口时 `ct.pkg#version` 为 `0.4.0`（MINOR=4，PATCH=0） |
 | 不为 | 不改深度上限 64；不引入游标/索引 API；不做错误 offset（归 PH-5）；不支持 BOM 剥离 |

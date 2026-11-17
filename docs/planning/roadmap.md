@@ -4,7 +4,7 @@
 
 ## 规则
 
-- 每个 phase 一张 [卡片](phases/README.md)，编号 `PH-<n>` 连续递增，`version-minor` 等于 n。
+- 每个 phase 一张 [卡片](../phases/README.md)，编号 `PH-<n>` 连续递增，`version-minor` 等于 n。
 - 立项与拆分属**大决定**：先核对需求与交付待办；违背方向即停止报用户。battle 只解决小事情。
 - 语言侧缺口只登记为 `blocked-by:` 与 issue，不降级需求、不假装完成。
 
