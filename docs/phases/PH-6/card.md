@@ -4,7 +4,7 @@
 - phase 目录：`docs/phases/PH-6/`
 - version-minor：6
 - 规范版本：1.15.0
-- 状态：in-progress
+- 状态：closed
 - criteria-sha256：11e251ba69fca3534ce28951fc786e82ea00f44ca91eee3496b2e432f49e7fac
 - tasks-sha256：2718cc79c05fd5512d673f811a91800ed28a9d1263ca3a605700322a0631d8df
 
@@ -108,3 +108,12 @@
 | 4 | 打 annotated tag `v0.6.0` 并推送（V-7） | `git cat-file -t v0.6.0` |
 | 5 | 写收口回顾（`lessons` 带 `landing`） | `reviews/closeout-PH-6.md` |
 | 6 | 更新 `docs/session-map.md` 与本目录清单 | 同上 |
+
+## 10. 收口记录（2026-11-17）
+
+- E-P6-1…E-P6-7 逐条通过，原始输出见 [reviews/closeout-PH-6.md](../../../reviews/closeout-PH-6.md)。
+- g4/g5 接入；`bash tools/check.sh all` 在 `v0.6.0` 上 rc=0、0 个未实现门禁。
+- 文档：规范/合论/反证全部 ≤300 行；README 重写；9 处死链修复。
+- 版本四项：`ct.pkg#version = 0.6.0`，MINOR=6=PH-6，PATCH=0；CHANGELOG 与 tag 一致。
+- R-E-02…R-E-06 收口；R-E-01 复核；R-B-01/05/06 文档明确不做。
+- tag：`v0.6.0`（annotated），随收口提交创建并推送（6.7 V-7）。

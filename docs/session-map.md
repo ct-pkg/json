@@ -20,3 +20,4 @@
 | 2026-11-17 | 开卡 PH-5：NaN 编码、错误偏移/行列、文案契约、失败清理 | [PH-5 卡](phases/PH-5/card.md) |
 | 2026-11-17 | PH-5 收口：NaN、错误偏移/行列、json_message、JSON-13/14；tag `v0.5.0` | [closeout-PH-5.md](../reviews/closeout-PH-5.md)、[error-contract.md](evidence/error-contract.md) |
 | 2026-11-17 | 开卡 PH-6：g4/g5、文档拆分、README、导出面、首版 | [PH-6 卡](phases/PH-6/card.md) |
+| 2026-11-17 | PH-6 收口：g4/g5、文档拆分、README、导出面、全门禁绿；tag `v0.6.0` | [closeout-PH-6.md](../reviews/closeout-PH-6.md)、[release-PH-6.md](evidence/release-PH-6.md) |

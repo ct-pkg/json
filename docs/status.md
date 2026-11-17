@@ -4,8 +4,8 @@
 
 | 项 | 值 |
 | --- | --- |
-| 当前版本 | `0.5.0`（落点见 `AGENTS.md` 的 `版本落点`） |
-| 当前 phase | **PH-6**（交付与门禁收口）；PH-5 已收口（`v0.5.0`） |
+| 当前版本 | `0.6.0`（落点见 `AGENTS.md` 的 `版本落点`） |
+| 当前 phase | **PH-6 已收口**（2026-11-17，`v0.6.0`）；roadmap 的 PH-1…PH-6 全部收口 |
 | 门禁入口 | `bash tools/check.sh <g0…g9|all>` |
 
 ## 门禁现状
@@ -16,8 +16,8 @@
 | g1 | 可运行 | 需求编号、无待定项、phase 卡十项与冻结摘要（无卡时只报 note） |
 | g2 | 可运行 | 验收映射 38 条 R-*、38 个 ACC、28 个公开符号；负例删行/删公开符号即红 |
 | g3 | 可运行 | J1 往返用例 + `json.expected.out` + 零警告 |
-| g4 | 退出 2 | 归 PH-6：snippet / 锚点 / 300 行 / `g4-version` 一并接入；`ct-json-0.1.0.md` 366 行待拆分（backlog #9） |
-| g5 | 退出 2 | 归 PH-6：各 phase 的红证先落卡片 / issue，PH-6 统一机器化 |
+| g4 | 可运行 | doc-size / snippets / anchors / readme / applies-to / version / tag |
+| g5 | 可运行 | 22 个任务红证登记、baseline 祖先、门禁负例覆盖 |
 | g6 | 可运行 | issue 状态与证据 |
 | g7 | 可运行 | 密钥扫描 + ASan（本平台不支持 `detect_leaks`）；基线自命中已由 JSON-7 修复 |
 | g8 | 可运行 | 基线后的版本移动、phase 冻结、收口 tag |

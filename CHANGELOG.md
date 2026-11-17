@@ -2,6 +2,30 @@
 
 项目产品版本见 `ct.pkg#version`。本文件按生成块 §6.7 记录版本：`MINOR` 与 phase 同步，`PATCH` 与 fix 同步；fix 不打 tag，phase 收口时打 annotated tag。
 
+## 0.6.0 — 2026-11-17（PH-6 收口）
+
+### Added
+
+- `g4`：doc-size（≤300 行）、snippets 可编可跑/fail 必失败、相对链接、README 七节、applies-to、CHANGELOG/tag/version 一致性（`e43eaac`）。
+- `g5`：22 个任务的逐任务红证登记（`docs/evidence/red-proofs.md`）、baseline 祖先校验、已实现门禁的负例覆盖（`894ade0`）。
+- `tools/check-doc-size.sh`、`tools/export-surface.sh`、`docs/api-surface.txt`（41 个公开符号）、`//@ct-requires`（`0227fd8`、`27b9069`）。
+- README 重写为树 API（安装/示例/API 索引/限制/版本/许可/applies-to）（`66b0cb2`）。
+
+### Changed
+
+- 规范拆为 `ct-json-0.1.0.md` + `-details.md`；评审合论/反证拆为编号分册 + 索引，全部文档 ≤300 行。
+- R-E-02…R-E-06 在验收映射中标「已满足」；R-A-01、R-D-09 一并收口。
+
+### Fixed
+
+- 8 张 phase 卡、roadmap 与 `_template` 的 9 处死链（g4 首次抓出）。
+
+### Known limitations
+
+- g4 只编译 `docs/snippets/` 下的完整程序；文档行内片段由测试覆盖，不逐个编译。
+- macOS 无 `detect_leaks`；泄漏以 `leaks --atExit` 单机补测。
+- 0.x 不承诺 C ABI；包根迁移不做（D-003）。
+
 ## 0.5.0 — 2026-11-17（PH-5 收口）
 
 ### Added
