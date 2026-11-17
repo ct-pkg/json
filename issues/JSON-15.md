@@ -77,3 +77,18 @@ GitHub 来源同样复现（`ct get https://github.com/ct-pkg/json@0.6.0` 后 `c
 - 影响：`g3`、`g4`（snippets）、`g7`（ASan 构建）与所有消费方 `ct build` 同时红。
 - 需要：恢复到用户所说的 `ct v0.62.0`（或能解析泛型声明的 `ct`），或上游修 ctc；
   在此之前不宣称门禁全绿。
+
+## 追加：v0.65.1 的 strict C boundary（2026-11-18）
+
+当前工具链升级到 `ct v0.65.1` 后，构建错误变成：
+
+```console
+$ ct build test/j1_roundtrip.ct -I src
+src/json.h.ct:21:1: error: a strict C boundary forbids '#include'; use .m.ct or <base>.shim.h
+$ echo $?
+1
+```
+
+即 `.h.ct` 不能再 `#include`，需要把实现拆到 `.m.ct` 并配 shim；此前的
+`expected a field name`（ctc 泛型）被这条新规则取代。干净 v0.4.0/v0.5.0/HEAD
+仍全部复现，`g3/g4/g7` 仍红。消费链与仓库自身构建要等该结构改造或上游放宽。

@@ -1,12 +1,12 @@
 ---
 id: JSON-17
-status: open
+status: fixed
 priority: P1
 owner: 本包（包清单）
 created: 2026-11-18
 last-touched: 2026-11-18
 block:
-evidence: ct v0.65.1；`ct.pkg` 的 `requires = ct >= 0.53.0`，但 `ct get` 的 store 模型从 v0.62.0 起；v0.6.0 tag 的清单同样写 0.53.0
+evidence: ct v0.65.1；`ct.pkg` 原 `requires = ct >= 0.53.0`，但 store 模型从 v0.62.0 起；修复提交 `b1804cb`（0.6.1 / v0.6.1）
 ---
 
 # JSON-17 `requires` 下限仍是 0.53.0，与 `ct get` 的 store 模型不符
@@ -36,6 +36,24 @@ v0.53–v0.61 的工具链没有 store 消费路径；按清单下限安装会�
 `requires = ct >= 0.62.0`，且 `//@ct-requires` 与之一致；新版本 `0.6.1` 的 tag
 `v0.6.1` 带同一 `publisher = ct`、`ns-root = src`，可被共享包库索引收录。
 
-## 处置（fixed 时写）
+## 处置（fixed）
 
-（待修复）
+2026-11-18：`ct.pkg` 与 `//@ct-requires` 改为 `ct >= 0.62.0`，版本 0.6.0 → 0.6.1，
+tag `v0.6.1`（修复提交 `b1804cb`）。共享包库身份保持 `publisher = ct`、`ns-root = src`。
+
+```console
+$ ct pkg check .
+ok: 4 criteria
+$ ct get /Users/samxx/trae-ws/ct-json
+resolved   ct/json 0.6.1
+  store    /Users/samxx/.ct/pkg/ct/json/0.6.1
+  digest   sha256:89f5ab9f...
+$ cat ct.lock
+# ct-lock 2
+ct/json 0.6.1 dir /Users/samxx/trae-ws/ct-json - src sha256:89f5ab9f...
+$ ct verify
+verified 1 package(s)
+```
+
+> 说明：`v0.6.1` 是共享包库契约要求的版本 tag（每个 version 一个 `v<version>`）。
+> 本仓 V-7 平时只给 phase 打 tag；此处按 ct-pkg/index 的收录契约执行，不影响 phase tag。

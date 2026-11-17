@@ -1,12 +1,12 @@
 ---
 id: JSON-18
-status: open
+status: fixed
 priority: P2
 owner: 本包（门禁 g8）
 created: 2026-11-18
 last-touched: 2026-11-18
 block:
-evidence: 提交 `7a328d4` 只改 `ct.pkg` 注释，`git diff` 版本行未变；`bash tools/check.sh g8` 报 `touches ct.pkg without a version move (V-5)`，rc=1
+evidence: 提交 `7a328d4` 只改 `ct.pkg` 注释，`git diff` 版本行未变；`bash tools/check.sh g8` 曾报 `touches ct.pkg without a version move (V-5)`，rc=1；修复提交 `681b13e`
 ---
 
 # JSON-18 g8 把 `ct.pkg` 的注释改动当成版本移动
@@ -44,6 +44,17 @@ $ echo $?
 在 g8 的逐提交检查里，先比较去掉注释/空行后的 `ct.pkg` 语义行；相同则跳过版本检查，
 不同才进入原有的 MINOR/PATCH 分支。负例：改 `requires` 但不改版本必须仍红。
 
-## 处置（fixed 时写）
+## 处置（fixed）
 
-（待修复）
+2026-11-18：g8 先去掉 `ct.pkg` 的注释/空行，比较语义 key=value 行；相同则跳过版本检查，
+不同才进入原 MINOR/PATCH 分支。负例 `g8 manifest change without version`（改 requires 不改版本）
+仍变红。修复提交 `681b13e`。
+
+```console
+$ bash tools/check.sh g8
+ok g8 (baseline ad5f1dc, version moves and phase tags valid)
+$ bash tools/negatives/run.sh g8
+red ok g8 manifest change without version  gate g8 rc=1 | FAIL g8: version move check failed
+$ echo $?
+0
+```

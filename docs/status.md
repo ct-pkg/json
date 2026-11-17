@@ -26,6 +26,9 @@
 
 退出 2 的检查不计入「通过」：它们缺前置产物，补上前不得宣称门禁全绿。
 
-> **工具链告警（2026-11-17）**：当前 `ct v0.63.2`（`~/.local/bin/ct`，mtime 08:04）在
-> `src/json.h.ct:86` 报 `expected a field name`；`v0.4.0`、`v0.5.0`、`HEAD` 的干净
-> `git archive` 都复现，`g3`/`g4`/`g7` 与消费方 `ct build` 同时红。见 `issues/JSON-15.md`。
+ > **工具链告警（2026-11-18）**：当前 `ct v0.65.1` 在 `src/json.h.ct:21` 报
+> `a strict C boundary forbids '#include'; use .m.ct or <base>.shim.h`；`v0.4.0`、`v0.5.0`、`HEAD`
+> 的干净 `git archive` 都复现，`g3`/`g4`/`g7` 与消费方 `ct build` 同时红。见 `issues/JSON-15.md`。
+>
+> **规范告警（2026-11-18）**：主规范已到 1.16.0（phase ID `v<M>-PH-<n>` + 迁移账本 PN-1…PN-11），
+> 本仓仍 pin 1.15.0；`g0`/`g9` 因此红。phase 号段迁移需单独立项，不在本次包契约任务内。
