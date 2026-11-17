@@ -1,9 +1,9 @@
-<!-- applies-to: 0.6.0 -->
+<!-- applies-to: 0.6.1 -->
 # ct-json — CT 的引用计数 JSON 树
 
 `ct-json` 是 CT 的外部包：把一段内存里的 JSON 字节严格解码为可读写的树，再把树编码回 JSON 字节。零分配只读视图是 0.1.0 的历史实现，已废止；当前唯一公开模型是树。
 
-- 版本：`0.6.0`（以 `ct.pkg#version` 为准）
+- 版本：`0.6.1`（以 `ct.pkg#version` 为准）
 - 规范：[docs/spec/ct-json-0.1.0.md](docs/spec/ct-json-0.1.0.md)（公开 API 与模型）
 - 验收：[docs/acceptance-map.md](docs/acceptance-map.md)（R-* → ACC-*）
 - 变更：[CHANGELOG.md](CHANGELOG.md)
@@ -35,7 +35,7 @@ import json;
 - `ct.lock` 一行记录：`ct/json <version> git|dir <source> <sha|-> src sha256:<digest>`。
 - **当前断点（JSON-15）**：v0.63.2 下 `ct build` 解析到 `src/json.h.ct:86` 时，ctc（L0）报
   `expected a field name`（`Map<Str, int>` 等泛型声明），消费链在编译阶段断开。
-- 要求 `ct >= 0.53.0`（`ct.pkg#requires` 与 `//@ct-requires` 一致）；store 模型本身要 `ct >= 0.62.0`。
+- 要求 `ct >= 0.62.0`（`ct.pkg#requires` 与 `//@ct-requires` 一致；store 模型自 v0.62.0 起）。
 
 ## 快速开始
 

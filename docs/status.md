@@ -4,7 +4,7 @@
 
 | 项 | 值 |
 | --- | --- |
-| 当前版本 | `0.6.0`（落点见 `AGENTS.md` 的 `版本落点`） |
+| 当前版本 | `0.6.1`（落点见 `AGENTS.md` 的 `版本落点`） |
 | 当前 phase | **PH-6 已收口**（2026-11-17，`v0.6.0`）；roadmap 的 PH-1…PH-6 全部收口 |
 | 门禁入口 | `bash tools/check.sh <g0…g9|all>` |
 | 消费方式 | `ct get`（store + `ct.lock`，v0.62.0 起无 `vendor/`）；v0.63.2 下 `ct build` 断在 ctc 泛型（JSON-15），GitHub 默认版本落到 v0.1.1（JSON-16） |

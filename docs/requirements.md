@@ -225,7 +225,7 @@
 | --- | --- | --- | --- |
 | Q-03 错误模型 | 码表统一为 `JSON_ERR_*`（含 TYPE/RANGE），不恢复 `JSON_READ_*`；parse 失败补 offset/行列；文案只保证非空；失败不返回部分树 | [D-001](decisions/D-001.md) | 2026-11-17 |
 | Q-05 Unicode/BOM | 默认宽松；PH-4 增 `json_decode_strict` + `JSON_ERR_UTF8`；BOM 一律拒绝不剥离；键/值允许内嵌 NUL | [D-002](decisions/D-002.md) | 2026-11-17 |
-| Q-06 包形态 | 单包多单元；PH-6 冻结导出清单；`requires = ct >= 0.53.0`；包根迁移暂不做；不承诺 C ABI | [D-003](decisions/D-003.md) | 2026-11-17 |
+| Q-06 包形态 | 单包多单元；PH-6 冻结导出清单；`requires = ct >= 0.62.0`；包根迁移暂不做；不承诺 C ABI | [D-003](decisions/D-003.md) | 2026-11-17 |
 | Q-07 树形状 | 采用现实现：具名 union + tag、JsonObj/JsonArr、refcount、键深拷贝、容器显式释放；不另立形状 | [D-004](decisions/D-004.md) | 2026-11-17 |
 | Q-08 深度/性能 | 固定 64 层即硬上限；20k 全量遍历 < 10 ms（实测 3.0 ms）；不引入游标 API | [D-005](decisions/D-005.md) | 2026-11-17 |
 | Q-09 编码失败/数字 | 无调用方缓冲，截断码不做；旧 JsonOut 不做；实数最短往返；非有限值拒绝（JSON-9 / PH-5） | [D-006](decisions/D-006.md) | 2026-11-17 |

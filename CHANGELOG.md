@@ -2,6 +2,16 @@
 
 项目产品版本见 `ct.pkg#version`。本文件按生成块 §6.7 记录版本：`MINOR` 与 phase 同步，`PATCH` 与 fix 同步；fix 不打 tag，phase 收口时打 annotated tag。
 
+## 0.6.1 — 2026-11-18
+
+### Fixed
+
+- **JSON-17**：`requires` 与 `//@ct-requires` 从 `ct >= 0.53.0` 改为 `ct >= 0.62.0`，与 `ct get` 的 store 模型对齐。
+
+### Packaging
+
+- 共享包库身份：`publisher = ct`、`ns-root = src`（与所有历史 tag 一致）；tag `v0.6.1` 供 ct-pkg/index 收录。
+
 ## 0.6.0 — 2026-11-17（PH-6 收口）
 
 ### Added

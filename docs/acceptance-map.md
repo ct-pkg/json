@@ -46,7 +46,7 @@
 | R-E-01 | 包可 import，不需复制单文件 | 需变更 | ACC-33 | `ct get` + `ct build`（store 模型） | `import json;` 能解析；但 `ct build` 在 `src/json.h.ct:86` 被 ctc 泛型拒绝（JSON-15）；旧 vendor 写法过期 | JSON-15（上游） |
 | R-E-02 | 公开面最小且可枚举，实现细节不进生成头 | 已满足 | ACC-34 | `bash tools/export-surface.sh` | 41 个公开符号（7 类型 + 34 函数/方法）冻结在 docs/api-surface.txt，脚本逐行 diff | 本 phase |
 | R-E-03 | 许可与同批包及上游一致 | 已满足 | ACC-35 | `grep -q '^## 许可' README.md` + `grep -q 'licence = MIT' ct.pkg` | ct.pkg / LICENSE / README 三处 MIT | 本 phase |
-| R-E-04 | 编译器下限与依赖声明 | 已满足 | ACC-36 | `bash tools/export-surface.sh`（内含 requires 比对） | `ct.pkg#requires` 与 `//@ct-requires` 都是 `ct >= 0.53.0` | 本 phase |
+| R-E-04 | 编译器下限与依赖声明 | 已满足 | ACC-36 | `bash tools/export-surface.sh`（内含 requires 比对） | `ct.pkg#requires` 与 `//@ct-requires` 都是 `ct >= 0.62.0` | 本 phase |
 | R-E-05 | 每条判据可执行并有负例 | 已满足 | ACC-37 | `bash tools/check.sh g5` | 22 个任务红证登记；已实现门禁负例覆盖；负例删行/bad baseline 即红 | 本 phase |
 | R-E-06 | README 与实现一致，无旧承诺 | 已满足 | ACC-38 | `grep -q 'applies-to' README.md` + `bash tools/check.sh g4` | README 重写为树 API，七节 + 许可 + applies-to；g4-readme 校验 | 本 phase |
 

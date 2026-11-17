@@ -1,4 +1,4 @@
-//@ct-requires: ct >= 0.53.0
+//@ct-requires: ct >= 0.62.0
 /*
  * json.h.ct -- ct-json 0.1.0 (CT v0.52.0 rewrite).
  *
