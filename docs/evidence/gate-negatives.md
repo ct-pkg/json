@@ -92,3 +92,15 @@ red ok g2 public symbol unmapped       gate g2 rc=1 | FAIL g2: public symbol jso
 $ echo $?
 0
 ```
+
+## 追加：g5 与 surface（PH-6）
+
+```console
+$ bash tools/negatives/run.sh g5
+red ok g5 missing task row             gate g5 rc=1 | FAIL g5: missing red proof for PH3-T1
+red ok g5 baseline not a commit        gate g5 rc=1 | FAIL g5: PH4-T1: baseline deadbee is not a commit
+$ bash tools/negatives/run.sh surface
+red ok surface tampered list           rc=1 | FAIL export-surface: public surface drifted; update docs/api-surface.txt
+$ echo $?
+0
+```

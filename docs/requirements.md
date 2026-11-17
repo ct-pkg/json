@@ -97,7 +97,7 @@
 
 | 编号 | 需求（要解决的问题） | 验收判据 | 状态 | 依据 / 阻塞 |
 | --- | --- | --- | --- | --- |
-| R-A-01 | 整段输入必须一次校验通过才产出根视图；空输入、纯空白、尾随数据各有确定错误 | ① `""` → rc=0、`JSON_ERR_EOF`、offset 0；② `" \n\t "` → rc=0、`JSON_ERR_EOF`；③ `"{} {}"` → `JSON_ERR_TRAILING`、offset 3；④ 失败后 `kind(root)` 为 `JSON_MISSING` | 已满足 | `json.ct:1590-1623`、`1654-1659`；`json.expected.out:8-13`、`98-118` |
+| R-A-01 | 整段输入必须一次校验通过才产出根视图；空输入、纯空白、尾随数据各有确定错误 | ① `""` → `JSON_ERR_EOF`、offset 0；② 纯空白 → `JSON_ERR_EOF`；③ `"{} {}"` → `JSON_ERR_TRAILING`、offset 3；④ 失败后 root 为空句柄 | 已满足 | `src/json.h.ct:499-516`；`test/j5_errors.ct` |
 | R-A-02 | 任意嵌套对象/数组可解析；空容器计数为 0；默认深度边界固定 | ① 现有 edge 文档 `root count=6`、空对象/空数组 `count=0`；② 64 层数组 rc=1；③ 65 层 rc=0 且 `JSON_ERR_DEPTH`、offset 64 | 已满足 | `json.ct:317-431`、`2249-2250`；`json.expected.out:14-24` |
 | R-A-03 | 字符串 8 种转义 + `\uXXXX` + 代理对解码为 UTF-8；短缓冲按 `snprintf` 语义 | ① `k_escape_text` 解码长度 22；② `\u0041`→`A`、`\u00e9`→`C3 A9`、`\u20ac`→`E2 82 AC`、`\ud83d\ude00`→`F0 9F 98 80`；③ `cap=5` 返回 22 且 `strlen=4`；④ 孤立代理、坏 `\u`、未知转义、<0x20 控制字节各报对应码 | 已满足 | `json.ct:193-264`、`1176-1205`、`1956-1979`；`json.ct:2163-2193` |
 | R-A-04 | 数字词法严格按 RFC 8259；整数 int64 精确，越界/小数/指数拒绝 | ① `01` / `1.` / `.5` / `+1` / `1e` 的错误码与 offset 逐条等于现有负例；② int64 min/max 精确；③ `9223372036854775808` → `JSON_READ_RANGE`；④ `1.0` / `1e3` 走 `as_int` → `JSON_READ_INTEGER` | 已满足 | `json.ct:267-314`、`1234-1283`；`json.ct:2103-2160` |

@@ -10,7 +10,7 @@
 
 | R | 摘要 | 基线判定 | ACC | 验收方式 | 证据 | 去向 |
 | --- | --- | --- | --- | --- | --- | --- |
-| R-A-01 | 整段校验；空/空白/尾随有确定错误；失败后根为空 | 需变更 | ACC-01 | `bash tools/check.sh g3` + `probe: json_decode("",0)` 期望 -1 | 探针：空 -1、空白 -1、尾随 -3、失败后 root 空；offset 缺 JSON-11 | PH-5（JSON-11 补 offset） |
+| R-A-01 | 整段校验；空/空白/尾随有确定错误；失败后根为空 | 已满足 | ACC-01 | `bash tools/check.sh g3` + `test/j5_errors.ct` 的 error_position_contract | 空 -1、空白 -1、尾随 -3 且 offset 3；失败后 root 空（JSON-11 已修） | 已收口（PH-5） |
 | R-A-02 | 嵌套对象/数组；空容器 count=0；默认深度边界 | 已满足 | ACC-02 | `test/j1_roundtrip.ct` 的 `64 levels decode` 与 `65 levels stop at depth 64` | 用例通过；`json_obj_len` / `json_arr_len` 见 access_contract | 本 phase |
 | R-A-03 | 字符串 8 种转义、`\uXXXX`、代理对；短缓冲语义 | 已满足 | ACC-03 | `test/j1_roundtrip.ct` 的 `round trip: escapes` 与 `round trip: unicode escapes` | 解码为 UTF-8 并与原文往返；短缓冲语义改为 `json_as_str` 借用+长度（API 改写） | 本 phase |
 | R-A-04 | 数字词法严格；int64 精确；小数/指数/越界拒绝 | 已满足 | ACC-04 | `test/j1_roundtrip.ct` 的 `as_int reads an integer literal` + 探针 1.0/1e3/2^63 | 1.0 与 1e3 返回 -11 TYPE，2^63 返回 -12 RANGE（D-001 改写码表） | 本 phase |
@@ -42,21 +42,21 @@
 | R-D-06 | 字符串保留长度与内嵌 NUL；键限制明确 | 已满足 | ACC-30 | `test/j1_roundtrip.ct` 的 `a key with an embedded NUL is data` | 值 `Str`；键 `Str` 深拷贝 | 本 phase |
 | R-D-07 | 缺键与 null 值可区分 | 已满足 | ACC-31 | `test/j1_roundtrip.ct` 的 `explicit null answers a node` 与 `is_null` | 空句柄 vs tag 0 | 本 phase |
 | R-D-08 | 重复键位置与值固定（last-wins，保首位） | 已满足 | ACC-32 | `test/j1_roundtrip.ct` 的 `overwriting keeps the key position` 与 duplicate round trip | `j1_obj_put` 命中即换值、位置不变 | 本 phase |
-| R-D-09 | 点分对象路径写入 `json_set` | 需新增 | ACC-39 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j3_json_set.ct -I src -o /tmp/j3 && /tmp/j3` | 35 条断言：新建/覆盖/保位、失败契约、所有权（PH-3） | 本 phase |
+| R-D-09 | 点分对象路径写入 `json_set` | 已满足 | ACC-39 | `CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j3_json_set.ct -I src -o /tmp/j3 && /tmp/j3` | 55 条断言：新建/覆盖/保位、失败契约、所有权（PH-3） | 已收口（PH-3） |
 | R-E-01 | 包可 import，不需复制单文件 | 已满足 | ACC-33 | `bash tools/check.sh g0` 的 `ct pkg check` + `test/pkg/consumer.ct` | JSON-4 修复；`import json::src::json;` | 本 phase |
-| R-E-02 | 公开面最小且可枚举，实现细节不进生成头 | 需变更 | ACC-34 | `grep -c '^pub ' src/json.h.ct` + 导出清单脚本（计划） | 现有 `pub` 清单可枚举；无冻结脚本/清单文件 | PH-6 |
-| R-E-03 | 许可与同批包及上游一致 | 需变更 | ACC-35 | `grep -q '^## License' README.md`（计划） | `ct.pkg#licence` 与 `LICENSE` 为 MIT；README 无许可段，三处不一致 | PH-6 |
-| R-E-04 | 编译器下限与依赖声明 | 需变更 | ACC-36 | `grep -q 'requires = ct' ct.pkg` + `//@ct-requires` 比对 | `requires = ct >= 0.53.0` 有；`//@ct-requires` 缺 | PH-6 |
-| R-E-05 | 每条判据可执行并有负例 | 需新增 | ACC-37 | `bash tools/check.sh g5`（计划） | g5 仍 exit 2；红证散在 issue/卡片 | PH-6 |
-| R-E-06 | README 与实现一致，无旧承诺 | 需变更 | ACC-38 | `grep -q 'zero-allocation' README.md` 期望旧段已标注 + `g4-readme`（计划） | README 仍保留已废止视图的大段说明 | PH-6 |
+| R-E-02 | 公开面最小且可枚举，实现细节不进生成头 | 已满足 | ACC-34 | `bash tools/export-surface.sh` | 41 个公开符号（7 类型 + 34 函数/方法）冻结在 docs/api-surface.txt，脚本逐行 diff | 本 phase |
+| R-E-03 | 许可与同批包及上游一致 | 已满足 | ACC-35 | `grep -q '^## 许可' README.md` + `grep -q 'licence = MIT' ct.pkg` | ct.pkg / LICENSE / README 三处 MIT | 本 phase |
+| R-E-04 | 编译器下限与依赖声明 | 已满足 | ACC-36 | `bash tools/export-surface.sh`（内含 requires 比对） | `ct.pkg#requires` 与 `//@ct-requires` 都是 `ct >= 0.53.0` | 本 phase |
+| R-E-05 | 每条判据可执行并有负例 | 已满足 | ACC-37 | `bash tools/check.sh g5` | 22 个任务红证登记；已实现门禁负例覆盖；负例删行/bad baseline 即红 | 本 phase |
+| R-E-06 | README 与实现一致，无旧承诺 | 已满足 | ACC-38 | `grep -q 'applies-to' README.md` + `bash tools/check.sh g4` | README 重写为树 API，七节 + 许可 + applies-to；g4-readme 校验 | 本 phase |
 
 ## 2. 统计
 
 | 判定 | 条数 |
 | --- | --- |
-| 已满足 | 29 |
-| 需新增 | 2 |
-| 需变更 | 5 |
+| 已满足 | 36 |
+| 需新增 | 0 |
+| 需变更 | 0 |
 | 待确认 | 0 |
 | 不做 | 3 |
 | 合计 | 39 |
@@ -125,4 +125,4 @@
 | PH-3 | R-D-09（ACC-39）、R-D-08（复核）、R-D-03（证据） |
 | PH-4 | R-A-08、R-A-09（JSON-10）、R-A-10、R-A-11（复核 D-005）、R-A-12（补用例） |
 | PH-5 | 本 phase 收口 R-A-01、R-B-03（JSON-9）、R-C-01（JSON-11）、R-C-03、R-C-05；R-B-04/R-B-07 已满足 |
-| PH-6 | R-B-01、R-B-05、R-B-06（文档明确不做）、R-E-02、R-E-03、R-E-04、R-E-05、R-E-06；R-E-01 已满足，只做复核 |
+| PH-6 | 本 phase 收口 R-E-02…R-E-06；R-B-01/05/06 文档明确不做；R-E-01 已满足 |
