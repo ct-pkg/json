@@ -43,7 +43,33 @@ expect_red() {
     fi
 }
 
-want="${*:-g0 g1 g2 g4 g5 g6 g7 g8}"
+# expect_red_script <name> <command...> — 直接跑一个脚本，要求 rc 非 0 且非 2。
+expect_red_script() {
+    name="$1"; shift
+    out="$tmp/.script.out"
+    "$@" >"$out" 2>&1
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        printf 'NEGATIVE-FAIL %-28s stayed green\n' "$name"
+        fail=1
+    elif [ "$rc" -eq 2 ]; then
+        printf 'NEGATIVE-FAIL %-28s skipped (rc=2), not a red\n' "$name"
+        fail=1
+    else
+        printf 'red ok %-31s rc=%s | %s\n' "$name" "$rc" \
+            "$(grep -m 1 -E '^(FAIL|error|.*error:)' "$out" | cut -c1-120)"
+    fi
+}
+
+want="${*:-g0 g1 g2 g4 g5 g6 g7 g8 surface}"
+
+case " $want " in
+*' surface '*)
+    d="$tmp/surface"; export_tree "$d"
+    echo "bogus_symbol" >> "$d/docs/api-surface.txt"
+    expect_red_script "surface tampered list" bash "$d/tools/export-surface.sh"
+    ;;
+esac
 
 case " $want " in
 *' g0 '*)

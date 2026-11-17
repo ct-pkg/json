@@ -629,6 +629,10 @@ all)
             *) rc=1 ;;
         esac
     done
+    printf '=== surface\n'
+    bash "$pkg/tools/export-surface.sh"
+    [ "$?" -eq 0 ] || rc=1
+
     printf '=== summary: %d unimplemented gate(s)\n' "$unimplemented"
     [ "$rc" -eq 0 ] || exit 1
     [ "$unimplemented" -eq 0 ] || exit 2
