@@ -116,7 +116,7 @@
 | --- | --- | --- | --- | --- |
 | R-B-01 | 追写器必须在结构错误时立即拒绝，而不是输出非法 JSON | ① 顶层 `key` → `JSON_EMIT_STATE`；② 第二个根值 → STATE；③ pending key 后 `end` → STATE；④ 第 65 层 → `JSON_EMIT_DEPTH` | 已满足 | `json.ct:658-704`、`755-795`、`852-866`；`json.ct:2039-2054` |
 | R-B-02 | 字符串必须转义 `"`、`\`、控制字节；非 ASCII 原样输出 | ① `a"b\c\nd\te\x01` → `"a\"b\\c\nd\te\u0001"`；② `0x7F` 原样；③ 输出可被本包 reader 重新解析且解码值相同 | 已满足 | `json.ct:706-735`；`json.ct:2032-2037` |
-| R-B-03 | 非有限实数必须拒绝，不得写出 `nan` / `inf` | ① NaN → `json_encode` 返回 NULL + `JSON_ERR_RANGE`；② +Inf / -Inf 同；③ 失败不产生半截输出（D-006） | 已满足 | `src/json.h.ct:1000-1020`；`test/j5_errors.ct` |
+| R-B-03 | 非有限实数必须拒绝，不得写出 `nan` / `inf` | ① NaN → `json_encode` 返回 NULL + `JSON_ERR_RANGE`；② +Inf / -Inf 同；③ 失败不产生半截输出（D-006） | 已满足 | `src/json.h.ct:1112-1130`；`test/j5_errors.ct` |
 | R-B-04 | 字符串/键必须支持长度参数，保证含 `\u0000` 的值可往返 | ① 解码 `"a\u0000b"` 得 3 字节；② 用 `string_len(buf, 3)` 写出后逐字节等于合法编码；③ `key_len` 同理；④ 现有 NUL 结尾 API 行为不变 | 需新增 | `json-package-refactor.md:51`；`json.ct:711` |
 | R-B-05 | 输出缓冲不足必须可判定，不得静默返回半截 JSON | ① `cap` 不足时 `finish()` 返回 -1 且 `error()==JSON_EMIT_TRUNCATED`（新码）；② `cap=0` 仍只量长度并返回所需长度；③ 足够时返回长度且 NUL 结尾；④ 负例：把截断当成功必须变红 | 需新增 | `json-package-refactor.md:52`；`json.ct:852-866` |
 | R-B-06 | 必须能把原生 `Map` / `Vec` 树直接编码，不要求调用方手写 object/key 序列 | ① `encode(Map<char*, JsonVal>)` 与手写追写器输出逐字节相同；② `encode(Vec<JsonVal>)` 同；③ 覆盖 3 层嵌套、空对象、空数组、null/true/false；④ 对象键按 Map 插入序输出；⑤ 不支持任意用户自定义类型（见 §6） | 需新增 | `Vec.h.ct:37-54`、`216-344`；`bindings-and-patterns.md:10-79` |
@@ -126,11 +126,11 @@
 
 | 编号 | 需求（要解决的问题） | 验收判据 | 状态 | 依据 / 阻塞 |
 | --- | --- | --- | --- | --- |
-| R-C-01 | 解析失败必须给出稳定错误码与位置 | ① 错误码 + `json_error_offset/line/column`；② 行列 1-based、按字节；③ 失败后 root 为空句柄 | 已满足 | `src/json.h.ct:450-480`、`331-345`；`test/j5_errors.ct` |
+| R-C-01 | 解析失败必须给出稳定错误码与位置 | ① 错误码 + `json_error_offset/line/column`；② 行列 1-based、按字节；③ 失败后 root 为空句柄 | 已满足 | `src/json.h.ct:499-516`、`331-344`；`test/j5_errors.ct` |
 | R-C-02 | 解析错误与访问器错误必须分离，访问器不得污染 parse 状态 | ① `read_error` 五值（NONE/KIND/MISSING/RANGE/INTEGER）；② 成功访问后 `JSON_READ_NONE`；③ parse 的 `error()` 不被访问器改写 | 已满足 | `json.ct:56-60`、`1577-1584`、`1741-1743` |
 | R-C-03 | 错误码常量、错误文案与未知码行为必须成为公开契约或明确不作契约 | ① `JSON_ERR_*` 数值冻结（`pub enum JsonCode`）；② `json_message` 只保证非空；③ 未知码返回固定文案（D-001） | 已满足 | `src/json.h.ct:37-53`、`346-370`；`test/j5_errors.ct` |
 | R-C-04 | 非错误情况不得误报 | ① 重复键、未知成员、空容器、前后空白均 rc=1 且 `error()==JSON_OK`；② 注释、尾逗号、`NaN`、`+1` 必须报错（严格 RFC 8259） | 已满足 | `json.ct:1590-1623`、`2097-2155` |
-| R-C-05 | 解码到 `Map`/`Vec` 失败时的部分结果与资源必须可判定 | ① 语法错误不返回部分树并释放已建节点；② OOM 按 `j1_alloc` abort（不返回错误码，D-001 注记）；③ 深度超限 `JSON_ERR_DEPTH`；④ 重复键 last-wins | 已满足 | `src/json.h.ct:918-950`；`test/j5_errors.ct`；`docs/evidence/error-contract.md` |
+| R-C-05 | 解码到 `Map`/`Vec` 失败时的部分结果与资源必须可判定 | ① 语法错误不返回部分树并释放已建节点；② OOM 按 `j1_alloc` abort（不返回错误码，D-001 注记）；③ 深度超限 `JSON_ERR_DEPTH`；④ 重复键 last-wins | 已满足 | `src/json.h.ct:810-931`、`989-1027`；`test/j5_errors.ct`；`docs/evidence/error-contract.md` |
 
 ### 4.4 D 组：数据模型与互操作
 

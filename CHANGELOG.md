@@ -2,6 +2,32 @@
 
 项目产品版本见 `ct.pkg#version`。本文件按生成块 §6.7 记录版本：`MINOR` 与 phase 同步，`PATCH` 与 fix 同步；fix 不打 tag，phase 收口时打 annotated tag。
 
+## 0.5.0 — 2026-11-17（PH-5 收口）
+
+### Added
+
+- `json_error_offset()` / `json_error_line()` / `json_error_column()`：最近一次解码失败的 0-based 偏移与 1-based 行列（列按字节），成功清零（`4f89a80`）。
+- `json_message(int)`：15 个已知错误码的静态非空文案，未知码固定文案，调用方不释放。
+- `test/j5_errors.ct`：31 条断言，覆盖 NaN、位置、文案与失败清理（红证 `31a6798`、`f3d37ce`）。
+
+### Fixed
+
+- **JSON-9**：NaN 编码输出 `{"x":nan}`；改为 `NULL` + `JSON_ERR_RANGE`（`fdd1b2c`）。
+- **JSON-11**：解析失败只有错误码；补 offset/line/column（`4f89a80`）。
+- **JSON-13**：CT v0.63.0 把 `9223372036854775808ULL` 钳成 INT64_MAX，导致 g3 红与 INT64_MIN 误报 RANGE；改用 `+1ULL` 绕行（`deaa657`）。
+- **JSON-14**：每个对象泄漏 32B Map 头；`j1_obj_new` 移交 `z.h` 后 0 leaks（`de87c01`）。
+
+### Changed
+
+- 规范 §3.6 补非有限实数拒绝；新增 §3.9 位置与文案契约；R-B-03/R-C-01/R-C-03/R-C-05 在映射中标「已满足」。
+- D-001 追加注记：OOM 与语法错误不可区分（分配走 `j1_alloc` abort）。
+
+### Known limitations
+
+- 错误位置只描述最近一次 decode，线程不安全（沿用 `json_last_error` 的全局约定）。
+- macOS 无 `detect_leaks`，泄漏检测只有 ASan 非泄漏项。
+- `g4` / `g5` 仍退出 2：归 PH-6。
+
 ## 0.4.0 — 2026-11-17（PH-4 收口）
 
 ### Added

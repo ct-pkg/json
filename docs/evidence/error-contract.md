@@ -30,7 +30,7 @@ ok 20 empty input is at 0, 1:1
 ## 3. 失败清理（ASan）
 
 ```console
-$ ct build test/j5_errors.ct -I src -o /tmp/j5_asan \
+$ CT_STD_DIR=/Users/samxx/trae-ws/ct-lang/lib/std ct build test/j5_errors.ct -I src -o /tmp/j5_asan \
     --cflags '-fsanitize=address -g' --ldflags '-fsanitize=address'
 $ ASAN_OPTIONS=detect_leaks=0 /tmp/j5_asan
 all checks passed
@@ -50,3 +50,16 @@ ok 8 a finite double still encodes
 ```
 
 NaN / +Inf / -Inf 都返回 `NULL` + `JSON_ERR_RANGE`；合法 double 仍编码。
+
+## 5. 泄漏与 int64 下限（PH-5 终验补）
+
+```console
+$ leaks --atExit --nosources -- /tmp/j5
+Process: 0 leaks for 0 total leaked bytes.
+$ /tmp/j1p5 | tail -1
+all checks passed
+$ /tmp/j1p5 | grep 'int64 min is exact'
+ok 119 int64 min is exact
+```
+
+JSON-14 修复后对象不再泄漏 32B Map 头；JSON-13 绕行后 INT64_MIN 精确。

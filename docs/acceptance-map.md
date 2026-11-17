@@ -1,10 +1,10 @@
 # 验收映射（R-* → ACC-*）
 
-- 基线：`src/json.h.ct`（树模型，唯一 import 入口）+ `test/j1_roundtrip.ct`；CT `v0.62.0`；锚点 `v0.2.0`（PH-2 收口）。
-- 依据：[docs/requirements.md](requirements.md) 的 38 条 `R-*`、[docs/spec/ct-json-0.1.0.md](spec/ct-json-0.1.0.md)、`docs/decisions/D-001…D-006.md`。
+- 基线：`src/json.h.ct`（树模型，唯一 import 入口）+ `test/j1_roundtrip.ct`；CT `v0.63.0`（复核实测）；锚点 `v0.5.0`（PH-5 收口）。
+- 依据：[docs/requirements.md](requirements.md) 的 39 条 `R-*`、[docs/spec/ct-json-0.1.0.md](spec/ct-json-0.1.0.md)、`docs/decisions/D-001…D-006.md`。
 - 旧 `json.ct`（零分配视图 + `JsonOut`）是已废止的 0.1.0 实现，只作 `g3` 的 golden；本表**不**拿它的行号当新基线的证据。
 - 判定只取五值：`已满足` / `需新增` / `需变更` / `待确认` / `不做`。`待确认` 在本 phase 收口时必须清零。
-- 门禁 `g2` 校验：38 条 `R-*` 全部在表内、每条有唯一 `ACC-*`、有可执行验收与去向、公开 `pub` 符号全部出现在 §3。
+- 门禁 `g2` 校验：39 条 `R-*` 全部在表内、每条有唯一 `ACC-*`、有可执行验收与去向、公开 `pub` 符号全部出现在 §3。
 
 ## 1. 需求映射
 

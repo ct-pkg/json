@@ -68,7 +68,7 @@
 
 ## 6. 红证方式
 
-- 基线：`v0.4.0`（`f2a624e`）。
+- 红证基线：T1 的 test 提交 `31a6798`（父 `v0.4.0` / `f2a624e`）；T2 的 test 提交 `f3d37ce`（父 `fdd1b2c`）。
 - T1 红：`{"x":nan}` 编码成功；T2 红：`json_error_offset` / `json_message` 未声明（编译失败）。
 - 红证由 VERIFY 认定；test 提交是实现提交的父提交。
 

@@ -5,7 +5,7 @@
 ## 编号与文件
 
 - 编号 `JSON-<n>`，连续递增，不复用；一条一个文件：`issues/JSON-<n>.md`。
-- 既有条目：`JSON-1`（三级下标链，v0.62.0 已 `fixed`）、`JSON-2`（临时值接收者，v0.62.0 已 `fixed`）、`JSON-3`（`char *`→`Str` 诊断分级，`open`）、`JSON-4`（包无法被消费，`fixed`）、`JSON-5`（链式结果作实参/条件）、`JSON-6`（三级写链）、`JSON-7`（g7 负例夹具自命中，`fixed`）、`JSON-8`（g8 把 phase 收口当 fix，`fixed`）、`JSON-9`（NaN 编码）、`JSON-10`（`as_double` 溢出）、`JSON-11`（解析错误无 offset/行列，`open`）、`JSON-12`（控制字节转义多写两位，`fixed`）。
+- 既有条目：`JSON-1`（三级下标链，v0.62.0 已 `fixed`）、`JSON-2`（临时值接收者，v0.62.0 已 `fixed`）、`JSON-3`（`char *`→`Str` 诊断分级，`open`）、`JSON-4`（包无法被消费，`fixed`）、`JSON-5`（链式结果作实参/条件）、`JSON-6`（三级写链）、`JSON-7`（g7 负例夹具自命中，`fixed`）、`JSON-8`（g8 把 phase 收口当 fix，`fixed`）、`JSON-9`（NaN 编码）、`JSON-10`（`as_double` 溢出）、`JSON-11`（解析错误无 offset/行列，`open`）、`JSON-12`（控制字节转义多写两位，`fixed`）、`JSON-13`（CT v0.63.0 2^63 字面量 codegen，`fixed` 绕行）、`JSON-14`（对象 Map 头泄漏，`fixed`）。
 - 本文件只管模板与状态词，不复制条目正文。
 
 ## 条目格式
@@ -44,7 +44,7 @@ $ echo $?
 ## 关联
 ```
 
-12 条均已改为 front-matter；`JSON-1`/`JSON-2` 在 PH-1 由旧「`- status:` 列表」升级为 front-matter，状态与证据内容按 v0.62.0 复跑更新。
+14 条均已改为 front-matter；`JSON-1`/`JSON-2` 在 PH-1 由旧「`- status:` 列表」升级为 front-matter，状态与证据内容按 v0.62.0 复跑更新。
 
 ## 状态词与分权（5.4）
 
