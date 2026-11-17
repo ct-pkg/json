@@ -35,8 +35,6 @@ import json;
 - `ct.lock` 一行记录：`ct/json <version> git|dir <source> <sha|-> src sha256:<digest>`。
 - **当前断点（JSON-15）**：v0.63.2 下 `ct build` 解析到 `src/json.h.ct:86` 时，ctc（L0）报
   `expected a field name`（`Map<Str, int>` 等泛型声明），消费链在编译阶段断开。
-- 本会话沙箱内 `~/.ct` 不可写（`Operation not permitted`）；实测用 `HOME=/tmp/...` 重定向完成。
-  真实 shell 的 store 权限需另测。
 - 要求 `ct >= 0.53.0`（`ct.pkg#requires` 与 `//@ct-requires` 一致）；store 模型本身要 `ct >= 0.62.0`。
 
 ## 快速开始
