@@ -96,6 +96,8 @@ $ echo $?
 | 3 | 导出面不冻结就会随实现漂移；`api-surface.txt` + 脚本让漂移变红 | `gate:surface` / `g4` |
 | 4 | 红证登记不能只写在卡片里；`red-proofs.md` + baseline 祖先校验才可机器核对 | `gate:g5` |
 | 5 | 门禁负例必须用真实 `.git` 克隆（g5 走 ancestry），`git archive` 会让它红错原因 | `gate:g5`（负例 clone） |
+| 6 | 门禁证据引用门禁自己的成功输出会自指：g1 扫 `TBD`，证据里写 "no TBD" 就让 g1 红 | `gate:g1`（输出改 "no pending markers"；不放宽扫描范围） |
+| 7 | 冻结卡里的判据命令必须对交付物跑得过；README 用中文 `## 许可` 时，`grep '^## License'` 会红 | `gate:g1`（开卡前先试跑判据命令） |
 
 ## 7. 未覆盖声明
 
@@ -107,6 +109,24 @@ $ echo $?
 
 ## 8. VERIFY 签字
 
-### 8.1 终验
+### 8.1 首轮终验（基线 `7e19c54`）：不通过
 
-（终验签字待填）
+阻断：`check.sh all` rc=1——`release-PH-6.md` 引用了 g1 的成功行 "no TBD"，
+被 g1 的 `TBD` 扫描命中（自指）。另：README 版本行 0.5.0、API 索引缺 7 个类型、
+冻结卡 E-P6-2 的 `grep '^## License'` 对中文 README 不可执行、AGENTS/status
+仍写 g2/g4/g5 退出 2。
+
+处置：`7e97e14`（g1 输出改措辞、证据换实测输出、README 版本/类型/英文 License、
+AGENTS/status/gate-negatives 同步）。
+
+### 8.2 终验（基线 `7e97e14`）：通过
+
+```text
+VERIFY: 通过 | 复核人: verify-ph6 | 日期: 2026-11-17 | 基线: 7e97e14
+```
+
+- `bash tools/check.sh all` rc=0，11 个 ok，`0 unimplemented`。
+- g4 / g5 / export-surface rc=0；g4/g5/surface 负例均 red。
+- 6 张卡 closed；6 个 annotated tag 指向各自收口提交并在 `origin/main`。
+- 验收映射 36/0/0/3；CHANGELOG 最新 0.6.0；HEAD 与 `origin/main` 同步。
+- 首轮的 g1 自指、README 版本/类型/License、AGENTS/status 陈旧口径均已修（`7e97e14`）。
